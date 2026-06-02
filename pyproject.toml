@@ -1,0 +1,95 @@
+[project]
+name = "reprotrail"
+version = "0.1.0"
+description = "Reusable provenance, runtime snapshot, and reproduction helpers"
+readme = "README.md"
+authors = [
+    { name = "Jan Haacker", email = "152862650+j-haacker@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.optional-dependencies]
+products = [
+    "xarray",
+    "zarr",
+]
+test = [
+    "pytest",
+]
+docs = [
+    "furo",
+    "myst-parser",
+    "sphinx",
+]
+dev = [
+    "pytest",
+    "ruff",
+    "sphinx",
+    "furo",
+    "myst-parser",
+]
+
+[project.scripts]
+reprotrail = "reprotrail.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.reprotrail]
+repos = ["."]
+product_root_markers = []
+env_var_whitelist = [
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "PIXI_ENVIRONMENT_NAME",
+    "SLURM_JOB_ID",
+    "SLURM_JOB_NAME",
+    "SLURM_CPUS_PER_TASK",
+]
+package_summary = ["reprotrail"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+reprotrail = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+
+[tool.pixi.feature.dev.dependencies]
+furo = "*"
+myst-parser = "*"
+pytest = "*"
+ruff = "*"
+sphinx = "*"
+uv = "*"
+
+[tool.pixi.environments]
+dev = ["dev"]
+
+[tool.pixi.tasks]
+test = "pytest"
+lint = "ruff check ."
+docs = "sphinx-build -W -b html docs docs/_build/html"
+build-docs = { depends-on = ["docs"] }

@@ -1,0 +1,24 @@
+# Runner
+
+`reprotrail run` wraps a command and records a v1 provenance sidecar.
+
+```bash
+reprotrail run \
+  --log results/run.log \
+  --provenance-json results/product.prov.json \
+  --product-output results/product.zarr \
+  -- python -m my_project.step --output results/product.zarr
+```
+
+The runner records:
+
+- command, start/end time, return code, and signal failures
+- configured software repository Git states
+- dirty working tree policy and tracked dirty patches
+- Pixi lockfile and environment summary when `pixi.lock` is present
+- dependency snapshot and accepted epoch when a contract exists
+- product metadata when `--product-output` or wrapped `--output` is available
+
+Dirty repositories fail before execution unless `--allow-dirty` is set.
+External editable/path Pixi dependencies fail unless `--allow-editable` is set
+and the dependency resolves to a Git repository.
