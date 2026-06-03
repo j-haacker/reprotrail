@@ -42,11 +42,7 @@ def _settings(project, repo):
 
 def _lock(project):
     (project / "pixi.lock").write_text(
-        "version: 6\n"
-        "environments:\n"
-        "  dev:\n"
-        "    packages:\n"
-        "      linux-64: []\n",
+        "version: 6\nenvironments:\n  dev:\n    packages:\n      linux-64: []\n",
         encoding="utf-8",
     )
 
@@ -149,9 +145,7 @@ def test_runner_records_signal_failure(tmp_path):
     assert payload["returncode"] == -9
     assert payload["exit_status"] == 137
     assert payload["signal"] == "SIGKILL"
-    assert "No Python traceback is available" in (tmp_path / "run.log").read_text(
-        encoding="utf-8"
-    )
+    assert "No Python traceback is available" in (tmp_path / "run.log").read_text(encoding="utf-8")
 
 
 def test_runner_blocks_external_editable_without_allow_editable(tmp_path):

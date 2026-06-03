@@ -78,28 +78,16 @@ def test_pixi_dependency_records_classify_self_and_external_paths(tmp_path):
     assert by_path["../dep"]["kind"] == "external-editable"
     assert by_path["../dep"]["package"] == "dep"
     assert editable_dependency_failures(records, allow_editable=False) == [
-        (
-            "External editable/path dependency requires --allow-editable: "
-            f"../dep ({(tmp_path / 'dep').resolve()})"
-        )
+        (f"External editable/path dependency requires --allow-editable: ../dep ({(tmp_path / 'dep').resolve()})")
     ]
-    assert "not a resolvable Git repository" in editable_dependency_failures(
-        records, allow_editable=True
-    )[0]
+    assert "not a resolvable Git repository" in editable_dependency_failures(records, allow_editable=True)[0]
 
 
 def test_pixi_dependency_records_append_resolved_editable_git_repos(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     dep = _git_repo(tmp_path / "dep")
-    lock_text = (
-        "version: 6\n"
-        "environments:\n"
-        "  dev:\n"
-        "    packages:\n"
-        "      linux-64:\n"
-        f"      - pypi: {dep}\n"
-    )
+    lock_text = f"version: 6\nenvironments:\n  dev:\n    packages:\n      linux-64:\n      - pypi: {dep}\n"
 
     records = pixi_dependency_records(lock_text, "dev", project)
     repos = repo_paths_with_dependencies(["."], records)
@@ -122,20 +110,14 @@ def test_dependency_contract_initializes_and_accepts_epochs(tmp_path):
     assert result["status"] == "would_initialize"
     assert not (run_root / epochs.CONTRACT_RELATIVE_PATH).exists()
 
-    result = epochs.check_dependency_contract(
-        run_root=run_root, project_root=tmp_path, snapshot=first
-    )
+    result = epochs.check_dependency_contract(run_root=run_root, project_root=tmp_path, snapshot=first)
     assert result["status"] == "initialized"
 
-    result = epochs.check_dependency_contract(
-        run_root=run_root, project_root=tmp_path, snapshot=first
-    )
+    result = epochs.check_dependency_contract(run_root=run_root, project_root=tmp_path, snapshot=first)
     assert result["status"] == "accepted"
 
     with pytest.raises(RuntimeError, match="Dependency runtime changed"):
-        epochs.check_dependency_contract(
-            run_root=run_root, project_root=tmp_path, snapshot=changed
-        )
+        epochs.check_dependency_contract(run_root=run_root, project_root=tmp_path, snapshot=changed)
 
     result = epochs.check_dependency_contract(
         run_root=run_root,

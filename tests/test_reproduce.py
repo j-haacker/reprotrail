@@ -83,8 +83,7 @@ def _write_provenance(
         pixi["local_dependencies"] = [dependency]
         pixi["external_editable_dependencies"] = [dependency]
     summary.write_text(
-        json.dumps({"schema_version": "1", "pixi": pixi}, indent=2, sort_keys=True)
-        + "\n",
+        json.dumps({"schema_version": "1", "pixi": pixi}, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     repos = [
@@ -133,9 +132,7 @@ def _write_provenance(
     path = product_dir / "hurs.prov.json"
     path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
     digest = _sha(path)
-    (product_dir / "hurs.prov.json.sha256").write_text(
-        f"{digest}  hurs.prov.json\n", encoding="utf-8"
-    )
+    (product_dir / "hurs.prov.json.sha256").write_text(f"{digest}  hurs.prov.json\n", encoding="utf-8")
     return path
 
 
@@ -201,8 +198,7 @@ def test_reproduce_preserves_editable_dependency_paths(tmp_path):
         "main",
         files={
             "pyproject.toml": (
-                "[tool.pixi.feature.utils-local.pypi-dependencies]\n"
-                'dep = { path = "../dep", editable = true }\n'
+                '[tool.pixi.feature.utils-local.pypi-dependencies]\ndep = { path = "../dep", editable = true }\n'
             )
         },
     )
@@ -213,14 +209,7 @@ def test_reproduce_preserves_editable_dependency_paths(tmp_path):
         dep_repo=dep_repo,
         env_name="dev",
         editable=True,
-        lock_text=(
-            "version: 6\n"
-            "environments:\n"
-            "  dev:\n"
-            "    packages:\n"
-            "      linux-64:\n"
-            "      - pypi: ../dep\n"
-        ),
+        lock_text=("version: 6\nenvironments:\n  dev:\n    packages:\n      linux-64:\n      - pypi: ../dep\n"),
     )
 
     report = reproduce_from_provenance(

@@ -176,9 +176,7 @@ def _stamp_zarr_pointer_attrs(data_path: Path, record: dict[str, Any], digest: s
     attrs.update(
         {
             "history": record.get("history_entry", attrs.get("history", "")),
-            PROVENANCE_FILE_ATTR: product.get(
-                "provenance_file", product_sidecars(data_path).provenance.name
-            ),
+            PROVENANCE_FILE_ATTR: product.get("provenance_file", product_sidecars(data_path).provenance.name),
             PROVENANCE_SHA256_ATTR: digest,
             PROVENANCE_SCHEMA_ATTR: record.get("schema_version", "1"),
         }
@@ -200,9 +198,7 @@ def _stamp_netcdf_pointer_attrs(data_path: Path, record: dict[str, Any], digest:
     ds.attrs.update(
         {
             "history": record.get("history_entry", ds.attrs.get("history", "")),
-            PROVENANCE_FILE_ATTR: product.get(
-                "provenance_file", product_sidecars(data_path).provenance.name
-            ),
+            PROVENANCE_FILE_ATTR: product.get("provenance_file", product_sidecars(data_path).provenance.name),
             PROVENANCE_SHA256_ATTR: digest,
             PROVENANCE_SCHEMA_ATTR: record.get("schema_version", "1"),
         }

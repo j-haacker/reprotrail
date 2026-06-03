@@ -113,9 +113,7 @@ def resolve_input_maps(
             continue
         resolved = _resolve_existing_recorded_path(original, provenance_path)
         if resolved is None:
-            report["warnings"].append(
-                f"Recorded input path could not be resolved: {original}"
-            )
+            report["warnings"].append(f"Recorded input path could not be resolved: {original}")
             continue
         resolved_maps[original] = str(resolved)
         report["resolved_inputs"].append(
@@ -138,9 +136,7 @@ def _repo_name(state: dict[str, Any]) -> str:
     return "repo"
 
 
-def _select_project_repo(
-    repos: list[dict[str, Any]], project_repo: str | None
-) -> dict[str, Any]:
+def _select_project_repo(repos: list[dict[str, Any]], project_repo: str | None) -> dict[str, Any]:
     if not repos:
         raise ReproductionError("Provenance contains no software_repos entries.")
     if project_repo:
@@ -227,9 +223,7 @@ def _run(
     if proc.stderr:
         item["stderr"] = proc.stderr[-4000:]
     if proc.returncode != 0:
-        raise ReproductionError(
-            f"{step} failed with exit code {proc.returncode}: {shlex.join(command)}"
-        )
+        raise ReproductionError(f"{step} failed with exit code {proc.returncode}: {shlex.join(command)}")
     return proc
 
 
@@ -245,9 +239,7 @@ def _clone_or_resume_repo(
     name = _repo_name(state)
     source = _repo_source(state, sources)
     if not source:
-        raise ReproductionError(
-            f"Repository {name!r} has no remote_url; provide --repo-source {name}=PATH_OR_URL."
-        )
+        raise ReproductionError(f"Repository {name!r} has no remote_url; provide --repo-source {name}=PATH_OR_URL.")
     if destination.exists():
         commit = state.get("commit")
         head = _git_value(destination, ["rev-parse", "HEAD"]) or None
@@ -311,17 +303,13 @@ def _clone_or_resume_repo(
     return True
 
 
-def _copy_artifact(
-    source: Path | None, destination_dir: Path, report: dict[str, Any], *, name: str
-) -> Path | None:
+def _copy_artifact(source: Path | None, destination_dir: Path, report: dict[str, Any], *, name: str) -> Path | None:
     if source is None or not source.exists():
         return None
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / source.name
     shutil.copy2(source, destination)
-    report["artifacts"].append(
-        {"name": name, "source": str(source), "path": str(destination)}
-    )
+    report["artifacts"].append({"name": name, "source": str(source), "path": str(destination)})
     return destination
 
 
@@ -346,9 +334,7 @@ def _apply_patch_if_present(
         required=True,
     ):
         return
-    copied = _copy_artifact(
-        patch_path, artifact_dir / "patches", report, name=f"patch {_repo_name(state)}"
-    )
+    copied = _copy_artifact(patch_path, artifact_dir / "patches", report, name=f"patch {_repo_name(state)}")
     if copied is not None:
         _run(
             ["git", "apply", str(copied)],
@@ -356,14 +342,10 @@ def _apply_patch_if_present(
             report=report,
             step=f"apply patch {_repo_name(state)}",
         )
-        report["patches"].append(
-            {"repo": _repo_name(state), "path": str(copied), "sha256": patch.get("sha256")}
-        )
+        report["patches"].append({"repo": _repo_name(state), "path": str(copied), "sha256": patch.get("sha256")})
 
 
-def _environment_refs(
-    record: dict[str, Any], provenance_path: Path
-) -> tuple[Path | None, Path | None, dict[str, Any]]:
+def _environment_refs(record: dict[str, Any], provenance_path: Path) -> tuple[Path | None, Path | None, dict[str, Any]]:
     environment = record.get("environment") or {}
     lock_ref = environment.get("lockfile") or {}
     summary_ref = environment.get("summary") or {}
@@ -382,11 +364,7 @@ def _external_editable_dependencies(
     *, summary: dict[str, Any], pixi: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[str]]:
     local_records = pixi.get("local_dependencies") or []
-    external = [
-        dict(record)
-        for record in local_records
-        if record.get("kind") == "external-editable"
-    ]
+    external = [dict(record) for record in local_records if record.get("kind") == "external-editable"]
     local_paths = [str(record.get("path")) for record in local_records if record.get("path")]
     if pixi.get("editable_dependencies") and not local_records:
         schema = summary.get("schema_version") or "unknown"
@@ -404,9 +382,7 @@ def _replace_path_token(text: str, old: str, new: str) -> str:
     return text
 
 
-def _rewrite_editable_paths(
-    *, project_path: Path, replacements: dict[str, str], report: dict[str, Any]
-) -> None:
+def _rewrite_editable_paths(*, project_path: Path, replacements: dict[str, str], report: dict[str, Any]) -> None:
     if not replacements:
         return
     pyproject_path = project_path / "pyproject.toml"
@@ -433,16 +409,12 @@ def _rewrite_editable_paths(
             "path": str(pyproject_path),
             "old_sha256": sha256_text(old_text),
             "new_sha256": sha256_text(new_text),
-            "replacements": [
-                {"old": old, "new": new} for old, new in sorted(replacements.items())
-            ],
+            "replacements": [{"old": old, "new": new} for old, new in sorted(replacements.items())],
         }
     )
 
 
-def _verify_input_provenance(
-    *, record: dict[str, Any], input_maps: dict[str, str], report: dict[str, Any]
-) -> None:
+def _verify_input_provenance(*, record: dict[str, Any], input_maps: dict[str, str], report: dict[str, Any]) -> None:
     for index, item in enumerate(record.get("input_paths") or []):
         metadata = item.get("metadata") or {}
         product_provenance = metadata.get("product_provenance") or {}
@@ -485,11 +457,7 @@ def _write_markdown_report(path: Path, report: dict[str, Any]) -> None:
     lines.extend(["", "## Repositories", ""])
     repos = report.get("repos") or []
     lines.extend(
-        [
-            f"- {repo.get('name')}: `{repo.get('commit')}` at `{repo.get('path')}`"
-            for repo in repos
-        ]
-        or ["- None"]
+        [f"- {repo.get('name')}: `{repo.get('commit')}` at `{repo.get('path')}`" for repo in repos] or ["- None"]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -558,9 +526,7 @@ def reproduce_from_provenance(
             required=strict,
         )
     else:
-        report["warnings"].append(
-            f"Product provenance checksum sidecar is missing: {sidecar}"
-        )
+        report["warnings"].append(f"Product provenance checksum sidecar is missing: {sidecar}")
 
     lock_source, summary_source, environment_ref = _environment_refs(record, provenance_path)
     summary = _load_environment_summary(summary_source)
@@ -586,9 +552,7 @@ def reproduce_from_provenance(
             required=False,
         )
 
-    external_dependencies, local_paths = _external_editable_dependencies(
-        summary=summary, pixi=pixi
-    )
+    external_dependencies, local_paths = _external_editable_dependencies(summary=summary, pixi=pixi)
     editable = bool(external_dependencies)
     report["environment"] = {
         "name": env_name,
@@ -603,9 +567,7 @@ def reproduce_from_provenance(
         if force:
             shutil.rmtree(workspace_path)
         elif not resume:
-            raise ReproductionError(
-                f"Workspace already exists: {workspace_path}. Use --resume or --force."
-            )
+            raise ReproductionError(f"Workspace already exists: {workspace_path}. Use --resume or --force.")
 
     repos = record.get("software_repos") or []
     project = _select_project_repo(repos, project_repo)
@@ -636,12 +598,8 @@ def reproduce_from_provenance(
         report,
         name="product provenance checksum",
     )
-    copied_lock = _copy_artifact(
-        lock_source, artifact_dir / "environment", report, name="pixi lockfile"
-    )
-    _copy_artifact(
-        summary_source, artifact_dir / "environment", report, name="environment summary"
-    )
+    copied_lock = _copy_artifact(lock_source, artifact_dir / "environment", report, name="pixi lockfile")
+    _copy_artifact(summary_source, artifact_dir / "environment", report, name="environment summary")
     if copied_lock is not None:
         shutil.copy2(copied_lock, project_path / "pixi.lock")
 
@@ -653,9 +611,7 @@ def reproduce_from_provenance(
             name = str(dependency.get("repo") or Path(local_path).name)
             state = repo_by_name.get(name)
             if state is None:
-                report["blockers"].append(
-                    f"Editable dependency {name!r} is missing from software_repos."
-                )
+                report["blockers"].append(f"Editable dependency {name!r} is missing from software_repos.")
                 continue
             destination = repo_root / name
             path_rewrites[local_path] = f"repos/{name}"
@@ -676,9 +632,7 @@ def reproduce_from_provenance(
                     artifact_dir=artifact_dir,
                     report=report,
                 )
-        _rewrite_editable_paths(
-            project_path=project_path, replacements=path_rewrites, report=report
-        )
+        _rewrite_editable_paths(project_path=project_path, replacements=path_rewrites, report=report)
 
     try:
         if strict and (report["warnings"] or report["blockers"]):

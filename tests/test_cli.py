@@ -59,7 +59,5 @@ def test_parser_accepts_run_and_epoch_commands():
     assert check.run_root == "run"
     assert check.dry_run is True
 
-    audit = parser.parse_args(
-        ["epoch", "audit", "--run-root", "run", "--output", "audit.json"]
-    )
+    audit = parser.parse_args(["epoch", "audit", "--run-root", "run", "--output", "audit.json"])
     assert audit.output == "audit.json"

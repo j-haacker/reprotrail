@@ -1,6 +1,9 @@
 .venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 __pycache__/
 *.py[cod]
 docs/_build/
@@ -8,3 +11,4 @@ dist/
 build/
 *.egg-info/
 .pixi/
+TODO

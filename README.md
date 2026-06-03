@@ -12,3 +12,10 @@ Documentation is in `docs/` and builds with:
 ```bash
 sphinx-build -W -b html docs docs/_build/html
 ```
+
+For development:
+
+```bash
+uv sync --extra dev
+uv run --extra dev pre-commit install --hook-type pre-commit --hook-type pre-push
+```

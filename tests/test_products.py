@@ -57,7 +57,5 @@ def test_finalize_product_provenance_writes_sidecars(tmp_path):
     assert digest
     assert sidecars.readme.exists()
     assert sidecars.license.exists()
-    assert sidecars.provenance_sha256.read_text().startswith(
-        f"{digest}  sample.prov.json"
-    )
+    assert sidecars.provenance_sha256.read_text().startswith(f"{digest}  sample.prov.json")
     assert "sample.dat" in sidecars.readme.read_text(encoding="utf-8")

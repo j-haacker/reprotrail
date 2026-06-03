@@ -55,13 +55,11 @@ def load_settings(project_root: str | Path | None = None) -> ReprotrailSettings:
     raw: dict[str, Any] = {}
     if pyproject.exists():
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        raw = (((data.get("tool") or {}).get("reprotrail")) or {})
+        raw = ((data.get("tool") or {}).get("reprotrail")) or {}
 
     license_payload = raw.get("license")
     license_value = (
-        {str(key): str(value) for key, value in license_payload.items()}
-        if isinstance(license_payload, dict)
-        else None
+        {str(key): str(value) for key, value in license_payload.items()} if isinstance(license_payload, dict) else None
     )
     known = {
         "repos",
@@ -75,18 +73,10 @@ def load_settings(project_root: str | Path | None = None) -> ReprotrailSettings:
     return ReprotrailSettings(
         project_root=root,
         repos=tuple(str(item) for item in raw.get("repos", ["."])),
-        product_root_markers=tuple(
-            str(item) for item in raw.get("product_root_markers", [])
-        ),
-        env_var_whitelist=tuple(
-            str(item)
-            for item in raw.get("env_var_whitelist", DEFAULT_ENV_VAR_WHITELIST)
-        ),
-        package_summary=tuple(str(item) for item in raw.get("package_summary", []))
-        or ("reprotrail",),
-        pixi_environment=(
-            str(raw["pixi_environment"]) if raw.get("pixi_environment") else None
-        ),
+        product_root_markers=tuple(str(item) for item in raw.get("product_root_markers", [])),
+        env_var_whitelist=tuple(str(item) for item in raw.get("env_var_whitelist", DEFAULT_ENV_VAR_WHITELIST)),
+        package_summary=tuple(str(item) for item in raw.get("package_summary", [])) or ("reprotrail",),
+        pixi_environment=(str(raw["pixi_environment"]) if raw.get("pixi_environment") else None),
         pixi_lockfile=str(raw.get("pixi_lockfile", "pixi.lock")),
         license=license_value,
         extra={str(key): value for key, value in raw.items() if key not in known},

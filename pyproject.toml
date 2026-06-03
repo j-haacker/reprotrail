@@ -31,6 +31,8 @@ docs = [
     "sphinx",
 ]
 dev = [
+    "pre-commit",
+    "pre-commit-hooks",
     "pytest",
     "ruff",
     "sphinx",
@@ -80,6 +82,7 @@ python = ">=3.11"
 [tool.pixi.feature.dev.dependencies]
 furo = "*"
 myst-parser = "*"
+pre-commit = "*"
 pytest = "*"
 ruff = "*"
 sphinx = "*"
