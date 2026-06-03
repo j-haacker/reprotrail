@@ -78,6 +78,77 @@ The template uses Python `string.Template` placeholders such as
 `${files_section}`, `${license_section}`, `${attribution_section}`, and
 `${warnings_section}`.
 
+## Adapting existing projects
+
+Projects that previously used `[tool.reprotrail.license]` must move product
+license selection into `reprotrail.products.toml`.
+
+1. Remove the old project-wide license table from `pyproject.toml`:
+
+   ```toml
+   [tool.reprotrail.license]
+   spdx = "MIT"
+   name = "MIT License"
+   url = "https://opensource.org/license/mit/"
+   ```
+
+2. Add a project-root `reprotrail.products.toml` file with one entry per output
+   pattern:
+
+   ```toml
+   [[products]]
+   output = "results/**/*.zarr"
+   license = "MIT"
+   ```
+
+3. Add non-marginal attribution inputs with at least `name` and `producer`.
+   Include `license` when known:
+
+   ```toml
+   [[products.inputs]]
+   path = "data/source.zarr"
+   name = "Source dataset"
+   producer = "Source producer"
+   license = "CC-BY-4.0"
+   ```
+
+4. Mark inputs as marginal when they should not appear in README attribution or
+   CC-family unknown-license warnings:
+
+   ```toml
+   [[products.inputs]]
+   name = "Lookup table"
+   producer = "Workflow team"
+   marginal = true
+   ```
+
+5. Add software license overrides only when local discovery is missing or wrong:
+
+   ```toml
+   [[products.software]]
+   name = "workflow-lib"
+   kind = "package"
+   license = "MIT"
+   ```
+
+6. Install product metadata dependencies in environments that finalize product
+   packages:
+
+   ```bash
+   uv sync --extra products
+   ```
+
+7. Update automation that intentionally accepts partial metadata to pass
+   `--allow-partial-metadata`. Without that flag, missing RO-Crate/SPDX tooling
+   fails finalization.
+
+8. Run one product finalization and inspect the generated README, `LICENSE.md`
+   when selected, provenance `license` summary, and `ro-crate-metadata.json`:
+
+   ```bash
+   reprotrail finalize --provenance-json results/product.prov.json
+   ```
+
 When optional product dependencies are installed, Zarr and NetCDF outputs also
 receive lightweight pointer attributes for the provenance file, checksum, and
 schema version.
