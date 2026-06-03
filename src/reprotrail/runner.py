@@ -67,9 +67,7 @@ def clean_command(command: list[str]) -> list[str]:
     return cleaned
 
 
-def default_provenance_path(
-    command: list[str], product_output: str | Path | None = None
-) -> Path | None:
+def default_provenance_path(command: list[str], product_output: str | Path | None = None) -> Path | None:
     output = product_output or command_value(command, "--output")
     if not output:
         return None
@@ -100,11 +98,7 @@ def _tracked_patch_text(repo: Path) -> str:
 
 
 def _untracked_files(status_short: str) -> list[str]:
-    return [
-        line[3:]
-        for line in status_short.splitlines()
-        if line.startswith("?? ") and len(line) > 3
-    ]
+    return [line[3:] for line in status_short.splitlines() if line.startswith("?? ") and len(line) > 3]
 
 
 def _write_dirty_patch_refs(states: list[dict[str, Any]], run_root: Path | None) -> None:
@@ -164,9 +158,7 @@ def collect_software_states(repos: list[str], log: Path) -> list[dict[str, Any]]
 def public_record(payload: dict[str, Any]) -> dict[str, Any]:
     record = dict(payload)
     if "software_repos" in record:
-        record["software_repos"] = [
-            public_git_state(state) for state in record.get("software_repos") or []
-        ]
+        record["software_repos"] = [public_git_state(state) for state in record.get("software_repos") or []]
     return record
 
 
@@ -244,29 +236,19 @@ def run_with_provenance(
     project_root = settings.project_root
     log_path = Path(log)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    provenance_path = (
-        Path(provenance_json)
-        if provenance_json
-        else default_provenance_path(command, product_output)
-    )
+    provenance_path = Path(provenance_json) if provenance_json else default_provenance_path(command, product_output)
     run_root = infer_run_root(provenance_path, settings.product_root_markers)
     product_output = product_output or command_value(command, "--output")
     clean = clean_command(command)
     pixi_environment = infer_pixi_environment(project_root, settings.pixi_environment)
     lockfile = project_root / settings.pixi_lockfile
     lock_text = lockfile.read_text(encoding="utf-8") if lockfile.exists() else ""
-    dependency_records = (
-        pixi_dependency_records(lock_text, pixi_environment, project_root)
-        if lock_text
-        else []
-    )
+    dependency_records = pixi_dependency_records(lock_text, pixi_environment, project_root) if lock_text else []
 
     with log_path.open("w", encoding="utf-8") as handle:
         handle.write(f"COMMAND: {' '.join(command)}\n\n")
 
-    inspected_repos = repo_paths_with_dependencies(
-        repos or list(settings.repos), dependency_records
-    )
+    inspected_repos = repo_paths_with_dependencies(repos or list(settings.repos), dependency_records)
     software_states = collect_software_states(inspected_repos, log_path)
     environment_refs: dict[str, Any] = {}
     warnings: list[str] = []
@@ -303,28 +285,20 @@ def run_with_provenance(
     if environment_refs:
         start_payload["environment"] = environment_refs
     if product_output is not None:
-        start_payload["product"] = product_record(
-            product_output, provenance_path=provenance_path
-        )
+        start_payload["product"] = product_record(product_output, provenance_path=provenance_path)
     if settings.license:
         start_payload["license"] = settings.license
 
     dirty = dirty_failures(software_states)
-    editable = editable_dependency_failures(
-        dependency_records, allow_editable=allow_editable
-    )
+    editable = editable_dependency_failures(dependency_records, allow_editable=allow_editable)
     dirty_blocked = bool(dirty and not allow_dirty)
     if dirty_blocked or editable:
         messages = []
         if dirty_blocked:
-            messages.append(
-                "Dirty software repository state requires --allow-dirty.\n\n"
-                + "\n\n".join(dirty)
-            )
+            messages.append("Dirty software repository state requires --allow-dirty.\n\n" + "\n\n".join(dirty))
         if editable:
             messages.append(
-                "Editable/path dependency provenance is incomplete or disallowed.\n\n"
-                + "\n".join(editable)
+                "Editable/path dependency provenance is incomplete or disallowed.\n\n" + "\n".join(editable)
             )
         message = "\n\n".join(messages)
         failed_payload = {
@@ -400,9 +374,7 @@ def run_with_provenance(
             finalize_product_provenance(provenance_path, license=settings.license)
             end_payload = read_provenance(provenance_path)
         except Exception as err:
-            end_payload.setdefault("warnings", []).append(
-                f"Product provenance finalization failed: {err}"
-            )
+            end_payload.setdefault("warnings", []).append(f"Product provenance finalization failed: {err}")
             write_provenance(provenance_path, end_payload)
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(f"WARNING: product provenance finalization failed: {err}\n")

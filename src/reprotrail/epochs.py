@@ -76,11 +76,7 @@ def state_identity(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def state_name(state: dict[str, Any]) -> str | None:
-    return (
-        state.get("repo")
-        or state.get("name")
-        or Path(str(state.get("repo_root") or state.get("label") or "")).name
-    )
+    return state.get("repo") or state.get("name") or Path(str(state.get("repo_root") or state.get("label") or "")).name
 
 
 def software_state_for_dependency(
@@ -121,9 +117,7 @@ def build_dependency_snapshot(
     records = dependency_records
     if records is None:
         records = pixi_dependency_records(lock_text, pixi_environment, project_root)
-    external_records = [
-        record for record in records if record.get("kind") == "external-editable"
-    ]
+    external_records = [record for record in records if record.get("kind") == "external-editable"]
     states = software_states or []
     editable_dependencies = []
     for record in external_records:
@@ -138,13 +132,7 @@ def build_dependency_snapshot(
         }
         if state is not None:
             dependency["git"] = state_identity(state)
-        editable_dependencies.append(
-            {
-                key: value
-                for key, value in dependency.items()
-                if value not in (None, "", {})
-            }
-        )
+        editable_dependencies.append({key: value for key, value in dependency.items() if value not in (None, "", {})})
     payload = {
         "schema_version": "1",
         "kind": "reprotrail-dependency-snapshot",
@@ -155,9 +143,7 @@ def build_dependency_snapshot(
                 "sha256": sha256_file(lockfile) if lockfile.exists() else None,
             },
             "local_path_dependencies": [
-                str(record.get("path"))
-                for record in public_dependency_records(records)
-                if record.get("path")
+                str(record.get("path")) for record in public_dependency_records(records) if record.get("path")
             ],
         },
         "packages": package_versions_payload or package_versions(package_names),
@@ -196,9 +182,7 @@ def dependency_state_signature(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def snapshots_equivalent(
-    left: dict[str, Any] | None, right: dict[str, Any] | None
-) -> bool:
+def snapshots_equivalent(left: dict[str, Any] | None, right: dict[str, Any] | None) -> bool:
     if not left or not right:
         return False
     if left.get("digest") and left.get("digest") == right.get("digest"):
@@ -212,9 +196,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     return read_json(path)
 
 
-def accepted_epoch(
-    contract: dict[str, Any], snapshot: dict[str, Any]
-) -> dict[str, Any] | None:
+def accepted_epoch(contract: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any] | None:
     for entry in contract.get("accepted_snapshots", []):
         if snapshots_equivalent(entry.get("snapshot") or {}, snapshot):
             return entry
@@ -230,29 +212,21 @@ def diff_snapshots(previous: dict[str, Any], current: dict[str, Any]) -> list[st
     if prev_lock != curr_lock:
         diffs.append(f"pixi.lock sha256 changed: {prev_lock} -> {curr_lock}")
     if prev_pixi.get("environment") != curr_pixi.get("environment"):
-        diffs.append(
-            "Pixi environment changed: "
-            f"{prev_pixi.get('environment')} -> {curr_pixi.get('environment')}"
-        )
+        diffs.append(f"Pixi environment changed: {prev_pixi.get('environment')} -> {curr_pixi.get('environment')}")
     prev_packages = previous.get("packages") or {}
     curr_packages = current.get("packages") or {}
     for name in sorted(set(prev_packages) | set(curr_packages)):
         if prev_packages.get(name) != curr_packages.get(name):
-            diffs.append(
-                f"package {name}: {prev_packages.get(name)} -> {curr_packages.get(name)}"
-            )
+            diffs.append(f"package {name}: {prev_packages.get(name)} -> {curr_packages.get(name)}")
     return diffs or ["dependency snapshot changed"]
 
 
-def format_dependency_failure(
-    contract: dict[str, Any], current_snapshot: dict[str, Any]
-) -> str:
+def format_dependency_failure(contract: dict[str, Any], current_snapshot: dict[str, Any]) -> str:
     accepted = contract.get("accepted_snapshots") or []
     previous = accepted[-1].get("snapshot") if accepted else {}
     detail = "\n".join(f"- {item}" for item in diff_snapshots(previous, current_snapshot)) if previous else ""
     known = ", ".join(
-        f"epoch {entry.get('epoch')} ({entry.get('snapshot', {}).get('digest', '')[:12]})"
-        for entry in accepted
+        f"epoch {entry.get('epoch')} ({entry.get('snapshot', {}).get('digest', '')[:12]})" for entry in accepted
     )
     return (
         "Dependency runtime changed and is not an accepted epoch for this run.\n\n"
@@ -344,9 +318,7 @@ def check_dependency_contract(
     raise RuntimeError(format_dependency_failure(contract, current))
 
 
-def contract_epoch_for_snapshot(
-    run_root: Path | None, snapshot: dict[str, Any]
-) -> dict[str, Any] | None:
+def contract_epoch_for_snapshot(run_root: Path | None, snapshot: dict[str, Any]) -> dict[str, Any] | None:
     if run_root is None:
         return None
     contract_path = run_root / CONTRACT_RELATIVE_PATH
@@ -380,11 +352,7 @@ def product_readme_path(provenance_path: Path, record: dict[str, Any]) -> Path |
 
 
 def runtime_note(consistency: dict[str, Any]) -> str:
-    different = [
-        item
-        for item in consistency.get("input_products", [])
-        if item.get("comparison") == "different"
-    ]
+    different = [item for item in consistency.get("input_products", []) if item.get("comparison") == "different"]
     if not different:
         return ""
     lines = [
@@ -450,18 +418,12 @@ def annotate_product_environment_consistency(
             comparison = "same"
         else:
             comparison = "different"
-        input_epoch = (
-            contract_epoch_for_snapshot(run_root, input_snapshot)
-            if input_snapshot and run_root
-            else None
-        )
+        input_epoch = contract_epoch_for_snapshot(run_root, input_snapshot) if input_snapshot and run_root else None
         input_products.append(
             {
                 "path": input_state.get("path"),
                 "provenance": str(input_prov_path),
-                "snapshot_digest": input_snapshot.get("digest")
-                if input_snapshot
-                else None,
+                "snapshot_digest": input_snapshot.get("digest") if input_snapshot else None,
                 "epoch": input_epoch.get("epoch") if input_epoch else None,
                 "comparison": comparison,
             }
@@ -471,12 +433,8 @@ def annotate_product_environment_consistency(
         "output_snapshot_digest": output_snapshot.get("digest"),
         "output_epoch": output_epoch.get("epoch") if output_epoch else None,
         "input_products": input_products,
-        "mixed_input_environments": any(
-            item.get("comparison") == "different" for item in input_products
-        ),
-        "unknown_input_environments": sum(
-            1 for item in input_products if item.get("comparison") == "unknown"
-        ),
+        "mixed_input_environments": any(item.get("comparison") == "different" for item in input_products),
+        "unknown_input_environments": sum(1 for item in input_products if item.get("comparison") == "unknown"),
     }
     record["dependency_snapshot"] = output_snapshot
     if output_epoch:

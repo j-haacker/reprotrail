@@ -99,9 +99,7 @@ def run_git(args: Sequence[str], cwd: Path | str) -> tuple[bool, str, str]:
     return True, proc.stdout, ""
 
 
-def discover_repo_root(
-    repo_dir: Path | str | None = None, *, max_parent_levels: int = 3
-) -> Path | None:
+def discover_repo_root(repo_dir: Path | str | None = None, *, max_parent_levels: int = 3) -> Path | None:
     """Find the Git repository root for a directory or one of its parents."""
 
     start = Path.cwd() if repo_dir is None else Path(repo_dir).expanduser()
@@ -139,24 +137,16 @@ def get_git_state(
     dirty = bool(status_output.strip())
     diff_hash = None
     if include_diff_hash and dirty:
-        _, staged, _ = run_git(
-            ["diff", "--cached", "--binary", "--no-ext-diff", "--"], cwd=repo_root
-        )
-        _, unstaged, _ = run_git(
-            ["diff", "--binary", "--no-ext-diff", "--"], cwd=repo_root
-        )
+        _, staged, _ = run_git(["diff", "--cached", "--binary", "--no-ext-diff", "--"], cwd=repo_root)
+        _, unstaged, _ = run_git(["diff", "--binary", "--no-ext-diff", "--"], cwd=repo_root)
         if staged or unstaged:
-            diff_hash = hashlib.sha256(
-                f"{staged}{unstaged}".encode("utf-8", errors="replace")
-            ).hexdigest()
+            diff_hash = hashlib.sha256(f"{staged}{unstaged}".encode("utf-8", errors="replace")).hexdigest()
 
     return GitState(
         repo_root=repo_root,
         commit=commit_output.strip() or None,
         branch=branch_output.strip() or None,
-        remote_url=canonicalize_remote_url(
-            remote_output.strip() if remote_ok and remote_output.strip() else None
-        ),
+        remote_url=canonicalize_remote_url(remote_output.strip() if remote_ok and remote_output.strip() else None),
         dirty=dirty,
         dirty_marker="+dirty" if dirty else "",
         status_short=status_output.rstrip("\n"),
@@ -265,9 +255,7 @@ def _lfs_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
     metadata: dict[str, Any] = {"is_pointer_file": False, "tracked_by_lfs": False}
     if path.is_file():
         try:
-            pointer = _parse_lfs_pointer(
-                path.read_text(encoding="utf-8", errors="replace")[:512]
-            )
+            pointer = _parse_lfs_pointer(path.read_text(encoding="utf-8", errors="replace")[:512])
         except OSError as err:
             pointer = None
             metadata["pointer_error"] = str(err)
@@ -275,14 +263,10 @@ def _lfs_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
             metadata.update(pointer)
     if repo_root is None or rel is None:
         return metadata
-    attr_ok, attr_output, _ = run_git(
-        ["check-attr", "filter", "--", rel], cwd=repo_root
-    )
+    attr_ok, attr_output, _ = run_git(["check-attr", "filter", "--", rel], cwd=repo_root)
     if attr_ok and attr_output.strip().endswith("filter: lfs"):
         metadata["tracked_by_lfs"] = True
-    lfs_ok, lfs_output, lfs_error = run_git(
-        ["lfs", "ls-files", "--long", "--", rel], cwd=repo_root
-    )
+    lfs_ok, lfs_output, lfs_error = run_git(["lfs", "ls-files", "--long", "--", rel], cwd=repo_root)
     if lfs_ok and lfs_output.strip():
         parts = lfs_output.split()
         if parts:
@@ -308,7 +292,7 @@ def _simple_dvc_outputs(text: str) -> list[dict[str, Any]]:
             continue
         key, value = line.split(":", 1)
         key = key.strip()
-        value = value.strip().strip('"\'')
+        value = value.strip().strip("\"'")
         if key in {"path", "md5", "hash", "etag", "size", "nfiles"}:
             current[key] = value
     if current:
@@ -333,9 +317,7 @@ def _dvc_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
         try:
             text = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError as err:
-            metadata.setdefault("errors", []).append(
-                {"path": str(candidate), "error": str(err)}
-            )
+            metadata.setdefault("errors", []).append({"path": str(candidate), "error": str(err)})
             continue
         if candidate.name == "dvc.lock" and rel is not None and rel not in text:
             continue
@@ -387,9 +369,7 @@ def get_input_path_state(path: Path | str) -> InputPathState:
 
     target = Path(path).expanduser().resolve()
     kind = _path_kind(target)
-    repo_root = discover_repo_root(
-        target if target.exists() else target.parent, max_parent_levels=8
-    )
+    repo_root = discover_repo_root(target if target.exists() else target.parent, max_parent_levels=8)
     git_state = None
     rel = None
     git_status = ""
@@ -449,9 +429,7 @@ def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[s
     lfs = metadata.get("lfs") or {}
     if lfs.get("tracked_by_lfs") or lfs.get("is_pointer_file"):
         public_metadata["lfs"] = {
-            key: value
-            for key, value in lfs.items()
-            if key in {"tracked_by_lfs", "is_pointer_file", "oid", "size"}
+            key: value for key, value in lfs.items() if key in {"tracked_by_lfs", "is_pointer_file", "oid", "size"}
         }
     dvc = metadata.get("dvc") or {}
     if dvc.get("dvc_files") or dvc.get("outputs"):
@@ -558,9 +536,7 @@ def build_cf_history_entry(
         compact = []
         for state in input_states:
             data = to_jsonable(state)
-            compact.append(
-                f"{Path(data.get('path', 'unknown')).name}:{data.get('backend', 'unknown')}"
-            )
+            compact.append(f"{Path(data.get('path', 'unknown')).name}:{data.get('backend', 'unknown')}")
         parts.append("inputs=" + ", ".join(compact))
     return "; ".join(parts)
 
@@ -607,10 +583,7 @@ def enforce_clean_repos(
         if state.dirty and not allow_dirty:
             failures.append(f"{state.repo_root} is dirty:\n{state.status_short}")
     if failures:
-        raise RuntimeError(
-            "Dirty software repository state requires --allow-dirty.\n"
-            + "\n\n".join(failures)
-        )
+        raise RuntimeError("Dirty software repository state requires --allow-dirty.\n" + "\n\n".join(failures))
     return states
 
 

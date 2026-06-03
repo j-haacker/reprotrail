@@ -40,10 +40,7 @@ def pixi_environment_block(lock_text: str, environment: str | None) -> str:
 def is_local_pixi_ref(value: str) -> bool:
     """Return whether a Pixi pypi reference points at a local path."""
 
-    return (
-        value in {".", "./"}
-        or value.startswith(("./", "../", "/", "~"))
-    )
+    return value in {".", "./"} or value.startswith(("./", "../", "/", "~"))
 
 
 def pixi_local_path_dependencies(lock_text: str, environment: str | None) -> list[str]:
@@ -115,20 +112,14 @@ def git_repo_root(path: Path) -> Path | None:
     return Path(root).resolve() if root else None
 
 
-def pixi_dependency_records(
-    lock_text: str, environment: str | None, project_root: Path
-) -> list[dict[str, Any]]:
+def pixi_dependency_records(lock_text: str, environment: str | None, project_root: Path) -> list[dict[str, Any]]:
     """Classify local Pixi dependencies as project-self or external-editable."""
 
     package_names = pixi_package_names_by_pypi(lock_text)
     records: list[dict[str, Any]] = []
     for value in pixi_local_path_dependencies(lock_text, environment):
         resolved = resolve_pixi_path(value, project_root)
-        kind = (
-            "project-self"
-            if is_project_self_dependency(value, resolved, project_root)
-            else "external-editable"
-        )
+        kind = "project-self" if is_project_self_dependency(value, resolved, project_root) else "external-editable"
         repo_root = git_repo_root(resolved)
         package = package_names.get(value)
         repo_name = repo_root.name if repo_root is not None else Path(value).name
@@ -151,18 +142,12 @@ def public_dependency_records(records: list[dict[str, Any]]) -> list[dict[str, A
     """Remove private resolved-path fields from dependency records."""
 
     return [
-        {
-            key: value
-            for key, value in record.items()
-            if not key.startswith("_") and value not in (None, "")
-        }
+        {key: value for key, value in record.items() if not key.startswith("_") and value not in (None, "")}
         for record in records
     ]
 
 
-def editable_dependency_failures(
-    dependency_records: list[dict[str, Any]], *, allow_editable: bool
-) -> list[str]:
+def editable_dependency_failures(dependency_records: list[dict[str, Any]], *, allow_editable: bool) -> list[str]:
     """Return policy failures for external editable/path dependencies."""
 
     failures = []
@@ -172,22 +157,14 @@ def editable_dependency_failures(
         path = record.get("path")
         resolved = record.get("_resolved_path")
         if not allow_editable:
-            failures.append(
-                "External editable/path dependency requires --allow-editable: "
-                f"{path} ({resolved})"
-            )
+            failures.append(f"External editable/path dependency requires --allow-editable: {path} ({resolved})")
             continue
         if not record.get("_repo_root"):
-            failures.append(
-                "Editable/path dependency is not a resolvable Git repository: "
-                f"{path} ({resolved})"
-            )
+            failures.append(f"Editable/path dependency is not a resolvable Git repository: {path} ({resolved})")
     return failures
 
 
-def repo_paths_with_dependencies(
-    repos: list[str], dependency_records: list[dict[str, Any]]
-) -> list[str]:
+def repo_paths_with_dependencies(repos: list[str], dependency_records: list[dict[str, Any]]) -> list[str]:
     """Append resolved editable dependency Git repos to an inspected repo list."""
 
     result = list(repos)
@@ -249,9 +226,7 @@ def environment_summary(
     """Build a portable summary of the active runtime environment."""
 
     public_records = public_dependency_records(dependency_records)
-    external_dependencies = [
-        record for record in public_records if record.get("kind") == "external-editable"
-    ]
+    external_dependencies = [record for record in public_records if record.get("kind") == "external-editable"]
     return {
         "schema_version": "1",
         "manager": "pixi",
@@ -259,9 +234,7 @@ def environment_summary(
             "environment": pixi_environment,
             "allow_editable": allow_editable,
             "editable_dependencies": bool(external_dependencies),
-            "local_path_dependencies": [
-                str(record["path"]) for record in public_records if record.get("path")
-            ],
+            "local_path_dependencies": [str(record["path"]) for record in public_records if record.get("path")],
             "local_dependencies": public_records,
             "external_editable_dependencies": external_dependencies,
         },
@@ -276,9 +249,7 @@ def environment_summary(
             "platform": platform.platform(),
         },
         "packages": package_versions(package_names),
-        "env_vars": {
-            key: os.environ[key] for key in env_var_whitelist if key in os.environ
-        },
+        "env_vars": {key: os.environ[key] for key in env_var_whitelist if key in os.environ},
         "project_root_name": project_root.name,
     }
 

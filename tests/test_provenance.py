@@ -65,10 +65,7 @@ def test_canonical_remote_and_public_git_state_omit_local_root(tmp_path):
     state = public_git_state(get_git_state(repo))
 
     assert state["remote_url"] == "https://github.com/j-haacker/reprotrail"
-    assert (
-        canonicalize_remote_url("ssh://github/j-haacker/reprotrail.git")
-        == "https://github.com/j-haacker/reprotrail"
-    )
+    assert canonicalize_remote_url("ssh://github/j-haacker/reprotrail.git") == "https://github.com/j-haacker/reprotrail"
     assert state["name"] == "reprotrail"
     assert "repo_root" not in state
 
@@ -96,9 +93,7 @@ def test_xarray_history_attr_roundtrip():
 def test_synthetic_lfs_pointer_is_detected(tmp_path):
     pointer = tmp_path / "data.nc"
     pointer.write_text(
-        "version https://git-lfs.github.com/spec/v1\n"
-        "oid sha256:0123456789abcdef\n"
-        "size 123\n",
+        "version https://git-lfs.github.com/spec/v1\noid sha256:0123456789abcdef\nsize 123\n",
         encoding="utf-8",
     )
 
@@ -111,10 +106,7 @@ def test_synthetic_lfs_pointer_is_detected(tmp_path):
 def test_synthetic_dvc_file_is_detected(tmp_path):
     repo = _repo(tmp_path)
     (repo / "data.bin.dvc").write_text(
-        "outs:\n"
-        "- md5: abc123\n"
-        "  size: 9\n"
-        "  path: data.bin\n",
+        "outs:\n- md5: abc123\n  size: 9\n  path: data.bin\n",
         encoding="utf-8",
     )
     _run(["git", "add", "data.bin.dvc"], repo)

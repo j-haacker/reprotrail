@@ -15,13 +15,13 @@ reproduce
 configuration
 snakemake
 api
-migration/index
 ```
 
 ## Install for development
 
 ```bash
 uv sync --extra dev
+uv run --extra dev pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 Build the documentation with warnings treated as errors:
