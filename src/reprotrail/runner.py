@@ -224,6 +224,7 @@ def run_with_provenance(
     repos: list[str] | None = None,
     allow_dirty: bool = False,
     allow_editable: bool = False,
+    allow_partial_metadata: bool = False,
     provenance_json: str | Path | None = None,
     product_output: str | Path | None = None,
     settings: ReprotrailSettings | None = None,
@@ -286,9 +287,6 @@ def run_with_provenance(
         start_payload["environment"] = environment_refs
     if product_output is not None:
         start_payload["product"] = product_record(product_output, provenance_path=provenance_path)
-    if settings.license:
-        start_payload["license"] = settings.license
-
     dirty = dirty_failures(software_states)
     editable = editable_dependency_failures(dependency_records, allow_editable=allow_editable)
     dirty_blocked = bool(dirty and not allow_dirty)
@@ -371,7 +369,12 @@ def run_with_provenance(
             end_payload = read_provenance(provenance_path)
     if proc.returncode == 0 and provenance_path is not None:
         try:
-            finalize_product_provenance(provenance_path, license=settings.license)
+            finalize_product_provenance(
+                provenance_path,
+                project_root=project_root,
+                pixi_environment=pixi_environment,
+                allow_partial_metadata=allow_partial_metadata,
+            )
             end_payload = read_provenance(provenance_path)
         except Exception as err:
             end_payload.setdefault("warnings", []).append(f"Product provenance finalization failed: {err}")
@@ -391,6 +394,7 @@ def run_from_namespace(args: argparse.Namespace) -> dict[str, Any]:
         repos=args.repo,
         allow_dirty=args.allow_dirty,
         allow_editable=args.allow_editable,
+        allow_partial_metadata=args.allow_partial_metadata,
         provenance_json=args.provenance_json,
         product_output=args.product_output,
     )

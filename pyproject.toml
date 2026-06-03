@@ -19,6 +19,8 @@ classifiers = [
 
 [project.optional-dependencies]
 products = [
+    "rocrate",
+    "spdx-tools",
     "xarray",
     "zarr",
 ]
@@ -87,6 +89,10 @@ pytest = "*"
 ruff = "*"
 sphinx = "*"
 uv = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+rocrate = "*"
+spdx-tools = "*"
 
 [tool.pixi.environments]
 dev = ["dev"]

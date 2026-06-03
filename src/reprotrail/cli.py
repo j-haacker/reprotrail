@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from .epochs import audit_dependency_epochs, check_dependency_contract
-from .products import finalize_product_provenance
+from .products import copy_readme_template, finalize_product_provenance
 from .reproduce import ReproductionError, parse_key_value, reproduce_from_provenance
 from .runner import RunError, run_from_namespace
 from .settings import load_settings
@@ -25,13 +25,23 @@ def _cmd_finalize(args: argparse.Namespace) -> None:
     try:
         digest = finalize_product_provenance(
             args.provenance_json,
-            license=settings.license,
+            project_root=settings.project_root,
+            pixi_environment=settings.pixi_environment,
+            allow_partial_metadata=args.allow_partial_metadata,
             stamp=not args.no_stamp,
         )
     except Exception as err:
         raise SystemExit(str(err)) from err
     if digest:
         print(digest)
+
+
+def _cmd_template_readme(args: argparse.Namespace) -> None:
+    try:
+        path = copy_readme_template(args.output, force=args.force)
+    except FileExistsError as err:
+        raise SystemExit(str(err)) from err
+    print(path)
 
 
 def _cmd_reproduce(args: argparse.Namespace) -> None:
@@ -104,6 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--repo", action="append")
     run.add_argument("--allow-dirty", action="store_true")
     run.add_argument("--allow-editable", action="store_true")
+    run.add_argument("--allow-partial-metadata", action="store_true")
     run.add_argument("--provenance-json")
     run.add_argument("--product-output")
     run.add_argument("command", nargs=argparse.REMAINDER)
@@ -112,7 +123,16 @@ def build_parser() -> argparse.ArgumentParser:
     finalize = sub.add_parser("finalize")
     finalize.add_argument("--provenance-json", required=True)
     finalize.add_argument("--no-stamp", action="store_true")
+    finalize.add_argument("--allow-partial-metadata", action="store_true")
     finalize.set_defaults(func=_cmd_finalize)
+
+    template = sub.add_parser("template")
+    template_sub = template.add_subparsers(dest="template_command", required=True)
+
+    readme = template_sub.add_parser("readme")
+    readme.add_argument("--output", required=True)
+    readme.add_argument("--force", action="store_true")
+    readme.set_defaults(func=_cmd_template_readme)
 
     reproduce = sub.add_parser("reproduce")
     reproduce.add_argument("--provenance", required=True)

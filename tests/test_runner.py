@@ -32,11 +32,6 @@ def _settings(project, repo):
         repos=(str(repo),),
         product_root_markers=("products",),
         package_summary=("reprotrail",),
-        license={
-            "spdx": "MIT",
-            "name": "MIT License",
-            "url": "https://opensource.org/license/mit/",
-        },
     )
 
 
@@ -74,6 +69,7 @@ def test_runner_blocks_dirty_repo_before_command(tmp_path):
 
 
 def test_runner_records_success_environment_and_dirty_patch(tmp_path, monkeypatch):
+    monkeypatch.setattr("reprotrail.product_metadata.pixi_package_license_records", lambda *_args: [])
     project = tmp_path / "project"
     project.mkdir()
     _lock(project)
