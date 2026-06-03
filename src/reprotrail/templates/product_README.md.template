@@ -1,0 +1,33 @@
+# ${data}
+
+This package contains one data product with reproducibility sidecars.
+
+## Files
+
+${files_section}
+
+## Provenance
+
+- Provenance schema: `${schema}`
+- Provenance SHA-256: `${digest}`
+
+Verify the provenance sidecar with:
+
+```bash
+sha256sum -c ${checksum_file}
+```
+
+The provenance sidecar records the command, software Git states, runtime
+environment, and input data states captured for this product.
+
+## License
+
+${license_section}
+
+## Attribution
+
+${attribution_section}
+
+## Warnings
+
+${warnings_section}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
 import platform
 import shutil
@@ -196,6 +197,50 @@ def package_versions(package_names: list[str] | tuple[str, ...]) -> dict[str, st
         except importlib.metadata.PackageNotFoundError:
             continue
     return versions
+
+
+def pixi_package_license_records(project_root: Path, pixi_environment: str | None) -> list[dict[str, Any]]:
+    """Return package license metadata from the local Pixi environment."""
+
+    command = [
+        "pixi",
+        "list",
+        "--json",
+        "--no-install",
+        "--manifest-path",
+        str(project_root),
+    ]
+    if pixi_environment:
+        command.extend(["--environment", pixi_environment])
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=project_root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as err:
+        raise RuntimeError(f"pixi package license discovery failed: {err}") from err
+    if proc.returncode != 0:
+        message = proc.stderr.strip() or proc.stdout.strip() or "pixi list failed"
+        raise RuntimeError(message)
+    data = json.loads(proc.stdout or "[]")
+    if not isinstance(data, list):
+        raise RuntimeError("pixi list returned an unexpected JSON payload.")
+    return [
+        {
+            "name": item.get("name"),
+            "version": item.get("version"),
+            "kind": item.get("kind"),
+            "license": item.get("license"),
+            "license_family": item.get("license_family"),
+        }
+        for item in data
+        if isinstance(item, dict)
+    ]
 
 
 def infer_pixi_environment(project_root: Path, value: str | None = None) -> str | None:

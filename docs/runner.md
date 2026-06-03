@@ -18,7 +18,13 @@ The runner records:
 - Pixi lockfile and environment summary when `pixi.lock` is present
 - dependency snapshot and accepted epoch when a contract exists
 - product metadata when `--product-output` or wrapped `--output` is available
+- product package README/license/RO-Crate sidecars when finalization succeeds
 
 Dirty repositories fail before execution unless `--allow-dirty` is set.
 External editable/path Pixi dependencies fail unless `--allow-editable` is set
 and the dependency resolves to a Git repository.
+
+Product package finalization reads `reprotrail.products.toml` from the project
+root. Use `--allow-partial-metadata` to keep the run successful when optional
+RO-Crate/SPDX product metadata tools are unavailable; reprotrail will write a
+README warning instead of full license-aware metadata.
