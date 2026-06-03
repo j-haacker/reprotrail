@@ -45,6 +45,7 @@ def test_parser_accepts_run_and_epoch_commands():
             "run",
             "--log",
             "run.log",
+            "--allow-partial-metadata",
             "--provenance-json",
             "run.prov.json",
             "--",
@@ -54,6 +55,21 @@ def test_parser_accepts_run_and_epoch_commands():
         ]
     )
     assert run.command == ["--", "python", "-c", "pass"]
+    assert run.allow_partial_metadata is True
+
+    finalize = parser.parse_args(
+        [
+            "finalize",
+            "--provenance-json",
+            "run.prov.json",
+            "--allow-partial-metadata",
+        ]
+    )
+    assert finalize.allow_partial_metadata is True
+
+    template = parser.parse_args(["template", "readme", "--output", "README.md.template", "--force"])
+    assert template.output == "README.md.template"
+    assert template.force is True
 
     check = parser.parse_args(["epoch", "check", "--run-root", "run", "--dry-run"])
     assert check.run_root == "run"
