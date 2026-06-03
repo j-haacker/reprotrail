@@ -16,6 +16,9 @@ API Reference
 .. automodule:: reprotrail.products
    :members:
 
+.. automodule:: reprotrail.product_metadata
+   :members:
+
 .. automodule:: reprotrail.reproduce
    :members:
 

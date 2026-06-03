@@ -4,6 +4,10 @@
 runs: software Git state, input path state, Pixi runtime snapshots, product
 sidecars, dependency epochs, and reproduction workspaces.
 
+Product sidecars can include explicit per-product license metadata, README
+attribution, and RO-Crate records selected from `reprotrail.products.toml`.
+Reprotrail does not default generated data products to a license.
+
 The package is intentionally workflow-agnostic. Projects can call the Python
 APIs directly or wrap commands with `reprotrail run`.
 
