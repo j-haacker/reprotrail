@@ -2,11 +2,20 @@
 
 ## Unreleased
 
+### Added
+
 - Start tracking release notes.
-- Planned license-aware product packaging:
-  - Select product licenses explicitly per product output.
-  - Generate product README, license notice, and RO-Crate sidecars without defaulting to a license.
-  - Record short product license summaries in provenance when a license is selected.
-- Add bundled product README template scaffolding and declare RO-Crate/SPDX tooling for product packaging.
-- Add product metadata index matching, SPDX product license validation, short provenance license summaries, RO-Crate sidecar generation, README attribution/warning rendering, Pixi dependency license discovery, and partial-metadata finalization support.
-- Document `reprotrail.products.toml`, README template export, RO-Crate sidecars, and migration away from `[tool.reprotrail.license]`.
+- Add explicit per-product license selection through project-root `reprotrail.products.toml` entries matched by output path.
+- Add SPDX product license validation, short provenance license summaries, generated `LICENSE.md` notices, and no-default-license warnings.
+- Add RO-Crate sidecar generation with input, attribution, software, and license evidence.
+- Add bundled README template rendering and `reprotrail template readme --output PATH`.
+- Add Pixi dependency license discovery, manual input/software license overrides, CC-family unknown-input-license warnings, and `--allow-partial-metadata`.
+
+### Changed
+
+- Reject legacy `[tool.reprotrail.license]` so product licenses are selected per product instead of project-wide.
+- Track `pixi.lock` and declare RO-Crate/SPDX tooling for product packaging.
+
+### Documentation
+
+- Document `reprotrail.products.toml`, README template export, RO-Crate sidecars, partial metadata mode, and migration away from `[tool.reprotrail.license]`.
