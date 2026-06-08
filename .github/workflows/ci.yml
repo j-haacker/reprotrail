@@ -39,4 +39,4 @@ jobs:
         run: uv run --extra dev ruff check .
 
       - name: Test
-        run: uv run --extra dev pytest
+        run: uv run --extra dev --extra products pytest
