@@ -31,7 +31,7 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.1.0
 
       - name: Build docs
         run: uv run --extra dev sphinx-build -W -b html docs docs/_build/html
