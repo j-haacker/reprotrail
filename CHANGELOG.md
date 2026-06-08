@@ -10,11 +10,13 @@
 - Add RO-Crate sidecar generation with input, attribution, software, and license evidence.
 - Add bundled README template rendering and `reprotrail template readme --output PATH`.
 - Add Pixi dependency license discovery, manual input/software license overrides, CC-family unknown-input-license warnings, and `--allow-partial-metadata`.
+- Add GitHub Actions workflows for CI checks and GitHub Pages documentation publishing.
 
 ### Changed
 
 - Reject legacy `[tool.reprotrail.license]` so product licenses are selected per product instead of project-wide.
 - Track `pixi.lock` and declare RO-Crate/SPDX tooling for product packaging.
+- Advertise Python 3.13 and 3.14 support in package classifiers.
 
 ### Documentation
 
