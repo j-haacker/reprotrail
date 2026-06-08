@@ -2,10 +2,12 @@
 
 ## Working Rules
 
-Create a new branch for each coherent implementation request, including
-features, fixes, and grouped documentation changes. Use concise kebab-case
-branch names in the form `type/short-topic`, such as `feat/product-sidecars`,
-`fix/provenance-hash`, `docs/contributing-guide`, or `chore/update-lockfile`.
+Create a new branch for each unrelated coherent implementation request,
+including features, fixes, and grouped documentation changes. Always
+create branches when on main. Use concise kebab-case branch names in the
+form `type/short-topic`, such as `feat/product-sidecars`,
+`fix/provenance-hash`, `docs/contributing-guide`, or
+`chore/update-lockfile`. Commit along the way.
 
 Keep changes scoped to the request. Avoid unrelated refactors, generated build
 output, and metadata churn that is not needed for the task.
