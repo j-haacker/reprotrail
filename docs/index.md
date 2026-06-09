@@ -5,8 +5,9 @@ Pixi runtime state, creating product sidecars, guarding dependency epochs, and
 setting up reproduction workspaces.
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 
+introduction
 provenance
 runner
 products
