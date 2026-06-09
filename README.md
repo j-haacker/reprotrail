@@ -11,7 +11,9 @@ Reprotrail does not default generated data products to a license.
 The package is intentionally workflow-agnostic. Projects can call the Python
 APIs directly or wrap commands with `reprotrail run`.
 
-Documentation is in `docs/` and builds with:
+Documentation is available
+[online](https://j-haacker.github.io/reprotrail/); further, it is in
+`docs/` and builds with:
 
 ```bash
 sphinx-build -W -b html docs docs/_build/html
