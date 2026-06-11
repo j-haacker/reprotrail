@@ -6,14 +6,17 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from ._json import write_json
 from ._paths import relative_path, sha256_file
+from .provenance import canonicalize_remote_url
 
 
 def pixi_environment_block(lock_text: str, environment: str | None) -> str:
@@ -187,6 +190,86 @@ def repo_paths_with_dependencies(repos: list[str], dependency_records: list[dict
     return result
 
 
+def normalize_package_name(name: str) -> str:
+    """Return a normalized Python distribution name."""
+
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _distribution_name(distribution: importlib.metadata.Distribution, requested_name: str) -> str:
+    metadata = getattr(distribution, "metadata", {}) or {}
+    try:
+        return str(metadata.get("Name") or requested_name)
+    except AttributeError:
+        return requested_name
+
+
+def _safe_direct_url(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, Any] = {}
+    vcs_info = payload.get("vcs_info") if isinstance(payload.get("vcs_info"), dict) else {}
+    url = payload.get("url")
+    if isinstance(url, str) and url:
+        parsed = urlparse(url)
+        if parsed.scheme == "file" or (not parsed.scheme and is_local_pixi_ref(url)):
+            result["url"] = "<redacted-local-path>"
+            result["url_kind"] = "file"
+            result["path_redacted"] = True
+        elif vcs_info.get("vcs") == "git":
+            result["url"] = canonicalize_remote_url(url)
+        else:
+            result["url"] = url
+    dir_info = payload.get("dir_info")
+    if isinstance(dir_info, dict) and "editable" in dir_info:
+        result["dir_info"] = {"editable": bool(dir_info["editable"])}
+    if vcs_info:
+        public_vcs = {
+            key: vcs_info[key]
+            for key in ("vcs", "commit_id", "requested_revision")
+            if vcs_info.get(key) not in (None, "")
+        }
+        if public_vcs:
+            result["vcs_info"] = public_vcs
+    return result
+
+
+def package_records(package_names: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+    """Return installed package records with sanitized source identity."""
+
+    records = []
+    seen: set[str] = set()
+    for requested_name in package_names:
+        seen_key = normalize_package_name(requested_name)
+        if seen_key in seen:
+            continue
+        seen.add(seen_key)
+        try:
+            distribution = importlib.metadata.distribution(requested_name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        installed_name = _distribution_name(distribution, requested_name)
+        record: dict[str, Any] = {
+            "requested_name": requested_name,
+            "name": normalize_package_name(installed_name),
+            "version": distribution.version,
+        }
+        try:
+            direct_url_text = distribution.read_text("direct_url.json")
+        except OSError:
+            direct_url_text = None
+        if direct_url_text:
+            try:
+                direct_url = _safe_direct_url(json.loads(direct_url_text))
+            except json.JSONDecodeError:
+                direct_url = {}
+                record["direct_url_error"] = "invalid-json"
+            if direct_url:
+                record["direct_url"] = direct_url
+        records.append(record)
+    return records
+
+
 def package_versions(package_names: list[str] | tuple[str, ...]) -> dict[str, str]:
     """Return installed versions for package names that can be resolved."""
 
@@ -294,6 +377,7 @@ def environment_summary(
             "platform": platform.platform(),
         },
         "packages": package_versions(package_names),
+        "runtime_packages": package_records(package_names),
         "env_vars": {key: os.environ[key] for key in env_var_whitelist if key in os.environ},
         "project_root_name": project_root.name,
     }

@@ -14,6 +14,16 @@ pixi_lockfile = "pixi.lock"
 
 CLI flags override settings for a single command where applicable.
 
+`package_summary` selects the installed Python distributions to summarize in the
+legacy `packages` version map and the richer `runtime_packages` records. For
+Git-installed packages, `runtime_packages` includes sanitized `direct_url.json`
+source metadata such as VCS URL and commit ID.
+
+`repos` is diagnostic-only. It lists repositories worth observing, but runtime
+software provenance is derived from the project repo and active Pixi
+editable/path dependencies. Configured repos that are not active runtime sources
+are recorded under `configured_repos`, not trusted `software_repos`.
+
 `product_root_markers` are used to infer the run root from a product provenance
 path. For example, with `product_root_markers = ["products"]`,
 `results/run/products/a/a.prov.json` resolves to `results/run`.

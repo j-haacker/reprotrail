@@ -2,7 +2,10 @@
 
 Dependency epochs guard a run root against unacknowledged runtime changes.
 Snapshots include Pixi lockfile hash, active Pixi environment, configured
-package versions, platform identity, and external editable dependency Git state.
+package versions, sanitized installed package source metadata, platform
+identity, and external editable dependency Git state. Source metadata is included
+so Git-installed packages can change dependency epochs even when their version
+strings do not change.
 
 Initialize or check a contract:
 

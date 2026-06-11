@@ -1,9 +1,10 @@
 # Using reprotrail in practice (Introduction)
 
 `reprotrail` records the practical trail behind a data-processing output: the
-command that ran, Git state of configured software repositories (see below), selected input
-path state, Pixi runtime metadata, product sidecars, dependency epochs (see below), and
-enough information to set up a reproduction workspace.
+command that ran, Git state for the workflow repository and active editable
+runtime dependencies, selected input path state, Pixi runtime metadata, product
+sidecars, dependency epochs (see below), and enough information to set up a
+reproduction workspace.
 
 It is intentionally workflow-agnostic, but there are Python-based
 convenience options. Use it around a shell command, inside Snakemake, or
@@ -32,13 +33,24 @@ selection, resources, and output naming.
 7. Use `reprotrail reproduce` when a product needs to be recreated or audited in
    a clean workspace.
 
-## Git state of configured software repos
+## Runtime software state
 
-`repos` in `[tool.reprotrail]` tells reprotrail which software repositories to
-inspect. For each configured repo, reprotrail records stable identifiers such as
-commit, branch, remote URL, dirty status, and, when allowed, compact dirty-state
-evidence. Dirty repositories block execution by default; pass `--allow-dirty`
-only when that state is intentional and should be part of the record.
+Trusted runtime software state comes from the command's active environment. The
+project Git checkout is recorded as `project_repo`. Active external Pixi
+editable/path dependencies are recorded as `software_repos`. Installed Python
+distributions named in `package_summary` are recorded in the environment summary
+and dependency snapshot as `runtime_packages`, including sanitized
+`direct_url.json` source metadata when available.
+
+`repos` in `[tool.reprotrail]` is diagnostic-only. It can list sibling checkouts
+that are useful to inspect, but those repos are written under `configured_repos`
+only when they are not active runtime sources. They do not satisfy runtime
+provenance, do not affect dependency epochs, and do not block execution if they
+are dirty.
+
+Dirty project repos and active editable/path dependency repos block execution by
+default; pass `--allow-dirty` only when that trusted runtime state is intentional
+and should be part of the record.
 
 ```toml
 [tool.reprotrail]
@@ -53,9 +65,10 @@ pixi_lockfile = "pixi.lock"
 
 Dependency epochs are a lightweight contract for a run root. They record the
 accepted runtime snapshot: Pixi lockfile hash, Pixi environment, selected package
-versions, platform identity, and editable dependency Git state. If the runtime
-changes, `reprotrail epoch check` can stop the workflow until the change is
-accepted with a reason.
+versions and source metadata, platform identity, and editable dependency Git
+state. Git package commit changes are included even when the package version
+string stays the same. If the runtime changes, `reprotrail epoch check` can stop
+the workflow until the change is accepted with a reason.
 
 ```bash
 reprotrail epoch check --run-root results/run

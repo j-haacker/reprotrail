@@ -12,6 +12,7 @@ from ._json import canonical_json, read_json, write_json
 from ._paths import sha256_file
 from .pixi import (
     git_value,
+    package_records,
     package_versions,
     pixi_dependency_records,
     public_dependency_records,
@@ -79,6 +80,28 @@ def state_name(state: dict[str, Any]) -> str | None:
     return state.get("repo") or state.get("name") or Path(str(state.get("repo_root") or state.get("label") or "")).name
 
 
+def package_record_name(record: dict[str, Any]) -> str:
+    return str(record.get("requested_name") or record.get("name") or "unknown")
+
+
+def package_source_identity(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "requested_name": record.get("requested_name"),
+        "name": record.get("name"),
+        "version": record.get("version"),
+        "direct_url": record.get("direct_url"),
+        "direct_url_error": record.get("direct_url_error"),
+    }
+
+
+def package_source_commit(record: dict[str, Any]) -> Any:
+    return ((record.get("direct_url") or {}).get("vcs_info") or {}).get("commit_id")
+
+
+def package_source_url(record: dict[str, Any]) -> Any:
+    return (record.get("direct_url") or {}).get("url")
+
+
 def software_state_for_dependency(
     record: dict[str, Any], software_states: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
@@ -105,6 +128,7 @@ def build_dependency_snapshot(
     lockfile: Path | None = None,
     pixi_environment: str | None = None,
     package_versions_payload: dict[str, str] | None = None,
+    runtime_packages_payload: list[dict[str, Any]] | None = None,
     dependency_records: list[dict[str, Any]] | None = None,
     software_states: list[dict[str, Any]] | None = None,
     package_names: tuple[str, ...] = ("reprotrail",),
@@ -147,6 +171,9 @@ def build_dependency_snapshot(
             ],
         },
         "packages": package_versions_payload or package_versions(package_names),
+        "runtime_packages": (
+            runtime_packages_payload if runtime_packages_payload is not None else package_records(package_names)
+        ),
         "editable_dependencies": editable_dependencies,
         "platform": {
             "system": platform.system(),
@@ -178,6 +205,10 @@ def dependency_state_signature(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {
         "lockfile_sha256": lockfile.get("sha256"),
         "pixi_environment": pixi.get("environment"),
+        "runtime_packages": sorted(
+            [package_source_identity(record) for record in snapshot.get("runtime_packages") or []],
+            key=canonical_json,
+        ),
         "editable_dependencies": sorted(deps, key=canonical_json),
     }
 
@@ -218,6 +249,29 @@ def diff_snapshots(previous: dict[str, Any], current: dict[str, Any]) -> list[st
     for name in sorted(set(prev_packages) | set(curr_packages)):
         if prev_packages.get(name) != curr_packages.get(name):
             diffs.append(f"package {name}: {prev_packages.get(name)} -> {curr_packages.get(name)}")
+    prev_runtime = {package_record_name(record): record for record in previous.get("runtime_packages") or []}
+    curr_runtime = {package_record_name(record): record for record in current.get("runtime_packages") or []}
+    for name in sorted(set(prev_runtime) | set(curr_runtime)):
+        prev_record = prev_runtime.get(name)
+        curr_record = curr_runtime.get(name)
+        if prev_record is None:
+            diffs.append(f"package {name} source added")
+            continue
+        if curr_record is None:
+            diffs.append(f"package {name} source removed")
+            continue
+        prev_commit = package_source_commit(prev_record)
+        curr_commit = package_source_commit(curr_record)
+        if prev_commit != curr_commit:
+            diffs.append(f"package {name} source commit changed: {prev_commit} -> {curr_commit}")
+            continue
+        prev_url = package_source_url(prev_record)
+        curr_url = package_source_url(curr_record)
+        if prev_url != curr_url:
+            diffs.append(f"package {name} source URL changed: {prev_url} -> {curr_url}")
+            continue
+        if package_source_identity(prev_record) != package_source_identity(curr_record):
+            diffs.append(f"package {name} source metadata changed")
     return diffs or ["dependency snapshot changed"]
 
 

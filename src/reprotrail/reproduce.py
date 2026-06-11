@@ -136,14 +136,21 @@ def _repo_name(state: dict[str, Any]) -> str:
     return "repo"
 
 
-def _select_project_repo(repos: list[dict[str, Any]], project_repo: str | None) -> dict[str, Any]:
-    if not repos:
-        raise ReproductionError("Provenance contains no software_repos entries.")
+def _select_project_repo(
+    repos: list[dict[str, Any]],
+    project_repo: str | None,
+    recorded_project: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if recorded_project:
+        if not project_repo or _repo_name(recorded_project) == project_repo:
+            return recorded_project
     if project_repo:
         for state in repos:
             if _repo_name(state) == project_repo:
                 return state
         raise ReproductionError(f"Project repo {project_repo!r} not found in provenance.")
+    if not repos:
+        raise ReproductionError("Provenance contains neither project_repo nor legacy software_repos project entries.")
     return repos[0]
 
 
@@ -570,7 +577,11 @@ def reproduce_from_provenance(
             raise ReproductionError(f"Workspace already exists: {workspace_path}. Use --resume or --force.")
 
     repos = record.get("software_repos") or []
-    project = _select_project_repo(repos, project_repo)
+    project = _select_project_repo(
+        repos,
+        project_repo,
+        recorded_project=record.get("project_repo") if isinstance(record.get("project_repo"), dict) else None,
+    )
     repo_root = workspace_path / "repos"
     project_path = workspace_path
     report["project_repo_path"] = str(project_path)
