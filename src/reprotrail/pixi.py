@@ -19,6 +19,10 @@ from ._paths import relative_path, sha256_file
 from .provenance import canonicalize_remote_url
 
 
+class PixiGitFreshnessError(RuntimeError):
+    """Raised when Pixi Git freshness cannot be checked safely."""
+
+
 def pixi_environment_block(lock_text: str, environment: str | None) -> str:
     """Return the environment block from a Pixi lockfile."""
 
@@ -324,6 +328,236 @@ def pixi_package_license_records(project_root: Path, pixi_environment: str | Non
         for item in data
         if isinstance(item, dict)
     ]
+
+
+def _first_string_by_key(payload: Any, keys: tuple[str, ...]) -> str | None:
+    if isinstance(payload, dict):
+        lowered = {str(key).lower(): value for key, value in payload.items()}
+        for key in keys:
+            value = lowered.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for value in payload.values():
+            found = _first_string_by_key(value, keys)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _first_string_by_key(value, keys)
+            if found:
+                return found
+    return None
+
+
+def _contains_git_marker(payload: Any) -> bool:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            lowered_key = str(key).lower()
+            if lowered_key == "vcs" and isinstance(value, str) and value.lower() == "git":
+                return True
+            if lowered_key in {"git", "vcs_info"} and value not in (None, "", {}):
+                return True
+            if _contains_git_marker(value):
+                return True
+    elif isinstance(payload, list):
+        return any(_contains_git_marker(value) for value in payload)
+    elif isinstance(payload, str):
+        return _looks_like_git_url(payload)
+    return False
+
+
+def _looks_like_git_url(value: str) -> bool:
+    lowered = value.strip().lower()
+    return (
+        lowered.startswith(("git+", "git@", "github:"))
+        or ".git" in lowered
+        or "://github.com/" in lowered
+        or "://github/" in lowered
+    )
+
+
+def _split_git_url_revision(value: str) -> tuple[str | None, str | None]:
+    candidate = value.strip()
+    if not candidate:
+        return None, None
+    if " @ git+" in candidate:
+        candidate = candidate.split(" @ ", 1)[1]
+    had_git_prefix = candidate.startswith("git+")
+    if candidate.startswith("git+"):
+        candidate = candidate.removeprefix("git+")
+    candidate, _, fragment = candidate.partition("#")
+    if not _looks_like_git_url(candidate):
+        return None, None
+    revision = None
+    git_revision_marker = ".git@"
+    if git_revision_marker in candidate:
+        candidate, revision = candidate.rsplit("@", 1)
+    elif had_git_prefix:
+        last_at = candidate.rfind("@")
+        if last_at > candidate.rfind("/"):
+            candidate, revision = candidate[:last_at], candidate[last_at + 1 :]
+    if not revision and fragment:
+        for item in fragment.split("&"):
+            key, _, fragment_value = item.partition("=")
+            if key in {"commit", "rev", "revision", "tag", "branch"} and fragment_value:
+                revision = fragment_value
+                break
+    return canonicalize_remote_url(candidate), revision or None
+
+
+def _first_git_url(payload: Any) -> tuple[str | None, str | None]:
+    for key in ("url", "git", "pypi", "source", "source_url"):
+        value = _first_string_by_key(payload, (key,))
+        if not value:
+            continue
+        url, revision = _split_git_url_revision(value)
+        if url:
+            return url, revision
+    return None, None
+
+
+def _pixi_git_source(payload: Any) -> tuple[dict[str, str] | None, bool]:
+    looks_git = _contains_git_marker(payload)
+    if not looks_git:
+        return None, False
+
+    url, url_revision = _first_git_url(payload)
+    commit = _first_string_by_key(payload, ("commit_id", "commit", "resolved_commit"))
+    requested_revision = _first_string_by_key(
+        payload,
+        ("requested_revision", "requested_ref", "rev", "branch", "tag"),
+    )
+    requested_revision = requested_revision or url_revision
+
+    source = {
+        "kind": "git",
+        "url": url,
+        "commit": commit,
+        "requested_revision": requested_revision,
+    }
+    public_source = {key: value for key, value in source.items() if value not in (None, "")}
+    if "commit" not in public_source and "requested_revision" not in public_source:
+        return None, True
+    return public_source, True
+
+
+def _package_change_name(row: dict[str, Any]) -> str | None:
+    value = row.get("name")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _pixi_update_change_rows(payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    environment = payload.get("environment")
+    if not isinstance(environment, dict):
+        raise PixiGitFreshnessError("pixi update returned an unexpected JSON payload.")
+
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for platforms in environment.values():
+        if not isinstance(platforms, dict):
+            raise PixiGitFreshnessError("pixi update returned an unexpected JSON payload.")
+        for platform_name, changes in platforms.items():
+            if not isinstance(changes, list):
+                raise PixiGitFreshnessError("pixi update returned an unexpected JSON payload.")
+            for change in changes:
+                if isinstance(change, dict):
+                    rows.append((str(platform_name), change))
+                else:
+                    raise PixiGitFreshnessError("pixi update returned an unexpected JSON payload.")
+    return rows
+
+
+def _pixi_git_freshness_report(
+    payload: dict[str, Any],
+    *,
+    environment: str,
+    packages: tuple[str, ...],
+) -> dict[str, Any]:
+    selected = {normalize_package_name(package) for package in packages}
+    stale_packages: list[dict[str, Any]] = []
+
+    for platform_name, row in _pixi_update_change_rows(payload):
+        name = _package_change_name(row)
+        if not name or normalize_package_name(name) not in selected:
+            continue
+
+        before_source, before_looks_git = _pixi_git_source(row.get("before"))
+        after_source, after_looks_git = _pixi_git_source(row.get("after"))
+        if not before_looks_git and not after_looks_git:
+            continue
+        if before_source is None or after_source is None:
+            raise PixiGitFreshnessError(
+                f"pixi update reported a Git-backed change for {name}, but reprotrail could not "
+                "extract a commit or requested revision."
+            )
+        if before_source == after_source:
+            continue
+        stale_packages.append(
+            {
+                "name": name,
+                "status": "changed",
+                "platform": platform_name,
+                "from": before_source,
+                "to": after_source,
+            }
+        )
+
+    return {
+        "status": "stale" if stale_packages else "fresh",
+        "environment": environment,
+        "checked_packages": list(packages),
+        "packages": stale_packages,
+    }
+
+
+def check_pixi_git_freshness(
+    project_root: Path,
+    environment: str,
+    packages: tuple[str, ...],
+    *,
+    manifest_path: Path | None = None,
+) -> dict[str, Any]:
+    """Check whether selected Git-backed Pixi packages would move on update."""
+
+    if not environment:
+        raise PixiGitFreshnessError("A Pixi environment is required.")
+    if not packages:
+        raise PixiGitFreshnessError("At least one package is required.")
+
+    project_root = Path(project_root)
+    manifest_path = Path(manifest_path) if manifest_path is not None else project_root
+    command = [
+        "pixi",
+        "update",
+        "--dry-run",
+        "--json",
+        "--manifest-path",
+        str(manifest_path),
+        "-e",
+        environment,
+        *packages,
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=project_root,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as err:
+        raise PixiGitFreshnessError(f"pixi update dry-run failed: {err}") from err
+    if proc.returncode != 0:
+        message = proc.stderr.strip() or proc.stdout.strip() or f"pixi exited with code {proc.returncode}"
+        raise PixiGitFreshnessError(f"pixi update dry-run failed: {message}")
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError as err:
+        raise PixiGitFreshnessError(f"pixi update returned invalid JSON: {err.msg}") from err
+    if not isinstance(payload, dict):
+        raise PixiGitFreshnessError("pixi update returned an unexpected JSON payload.")
+    return _pixi_git_freshness_report(payload, environment=environment, packages=packages)
 
 
 def infer_pixi_environment(project_root: Path, value: str | None = None) -> str | None:
