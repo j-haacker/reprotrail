@@ -136,6 +136,18 @@ def _write_provenance(
     return path
 
 
+def _rewrite_with_project_repo(provenance: Path) -> None:
+    payload = json.loads(provenance.read_text(encoding="utf-8"))
+    repos = payload.pop("software_repos")
+    payload["project_repo"] = repos[0]
+    payload["software_repos"] = repos[1:]
+    provenance.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (provenance.parent / f"{provenance.name}.sha256").write_text(
+        f"{_sha(provenance)}  {provenance.name}\n",
+        encoding="utf-8",
+    )
+
+
 def test_reproduce_sets_up_production_workspace_without_editable_deps(tmp_path):
     main_repo = _git_repo(tmp_path, "main", files={"pyproject.toml": "[tool.pixi.workspace]\n"})
     provenance = _write_provenance(
@@ -223,6 +235,38 @@ def test_reproduce_preserves_editable_dependency_paths(tmp_path):
     assert (tmp_path / "workspace" / "repos" / "dep" / ".git").exists()
     assert 'path = "repos/dep"' in (tmp_path / "workspace" / "pyproject.toml").read_text()
     assert "- pypi: repos/dep" in (tmp_path / "workspace" / "pixi.lock").read_text()
+
+
+def test_reproduce_uses_project_repo_with_runtime_software_repos(tmp_path):
+    main_repo = _git_repo(
+        tmp_path,
+        "main",
+        files={
+            "pyproject.toml": (
+                '[tool.pixi.feature.utils-local.pypi-dependencies]\ndep = { path = "../dep", editable = true }\n'
+            )
+        },
+    )
+    dep_repo = _git_repo(tmp_path, "dep")
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        dep_repo=dep_repo,
+        env_name="dev",
+        editable=True,
+        lock_text=("version: 6\nenvironments:\n  dev:\n    packages:\n      linux-64:\n      - pypi: ../dep\n"),
+    )
+    _rewrite_with_project_repo(provenance)
+
+    report = reproduce_from_provenance(
+        provenance=provenance,
+        workspace=tmp_path / "workspace",
+        install=False,
+    )
+
+    assert report["status"] == "completed"
+    assert (tmp_path / "workspace" / ".git").exists()
+    assert (tmp_path / "workspace" / "repos" / "dep" / ".git").exists()
 
 
 def test_reproduce_existing_workspace_requires_resume_or_force(tmp_path):

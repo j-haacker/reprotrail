@@ -18,6 +18,10 @@
 - Track `pixi.lock` and declare RO-Crate/SPDX tooling for product packaging.
 - Advertise Python 3.13 and 3.14 support in package classifiers.
 
+### Fixed
+
+- Fix runtime provenance so configured sibling repositories are not recorded as trusted runtime software when the active Pixi environment uses installed package sources instead (#4).
+
 ### Documentation
 
 - Document `reprotrail.products.toml`, README template export, RO-Crate sidecars, partial metadata mode, and migration away from `[tool.reprotrail.license]`.

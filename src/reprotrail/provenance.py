@@ -465,7 +465,13 @@ def public_provenance(value: Any) -> Any:
         for key, item in data.items():
             if key in {"history_entry", "repo_root", "source_path"}:
                 continue
+            if key == "project_repo":
+                result[key] = public_git_state(item)
+                continue
             if key == "software_repos" and isinstance(item, Iterable):
+                result[key] = [public_git_state(state) for state in item]
+                continue
+            if key == "configured_repos" and isinstance(item, Iterable):
                 result[key] = [public_git_state(state) for state in item]
                 continue
             if key == "input_paths" and isinstance(item, Iterable):
