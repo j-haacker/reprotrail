@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .epochs import audit_dependency_epochs, check_dependency_contract
+from .pixi import PixiGitFreshnessError, check_pixi_git_freshness
 from .products import copy_readme_template, finalize_product_provenance
 from .reproduce import ReproductionError, parse_key_value, reproduce_from_provenance
 from .runner import RunError, run_from_namespace
@@ -105,6 +107,56 @@ def _cmd_epoch_audit(args: argparse.Namespace) -> None:
         print(f"dependency epoch audit: {args.output}")
 
 
+def _format_source(source: dict[str, str]) -> str:
+    label = source.get("url") or "git"
+    revision = source.get("commit") or source.get("requested_revision")
+    return f"{label}@{revision}" if revision else label
+
+
+def _cmd_pixi_check_git_freshness(args: argparse.Namespace) -> None:
+    try:
+        result = check_pixi_git_freshness(
+            project_root=Path.cwd(),
+            environment=args.env,
+            packages=tuple(args.package),
+            manifest_path=Path(args.manifest_path) if args.manifest_path else None,
+        )
+    except PixiGitFreshnessError as err:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "environment": args.env,
+                        "checked_packages": list(args.package or []),
+                        "error": str(err),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(str(err), file=sys.stderr)
+        raise SystemExit(2) from err
+
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        print(f"pixi git freshness: {result['status']}")
+        print(f"environment: {result['environment']}")
+        print(f"checked packages: {', '.join(result['checked_packages'])}")
+        if result["packages"]:
+            print("stale packages:")
+            for package in result["packages"]:
+                print(
+                    f"- {package['name']} ({package['platform']}): "
+                    f"{_format_source(package['from'])} -> {_format_source(package['to'])}"
+                )
+
+    if result["status"] == "stale":
+        raise SystemExit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reprotrail")
     sub = parser.add_subparsers(dest="command_name", required=True)
@@ -164,6 +216,16 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--output", required=True)
     audit.add_argument("--json", action="store_true")
     audit.set_defaults(func=_cmd_epoch_audit)
+
+    pixi = sub.add_parser("pixi")
+    pixi_sub = pixi.add_subparsers(dest="pixi_command", required=True)
+
+    freshness = pixi_sub.add_parser("check-git-freshness")
+    freshness.add_argument("--env", required=True)
+    freshness.add_argument("--package", action="append", required=True)
+    freshness.add_argument("--manifest-path")
+    freshness.add_argument("--json", action="store_true")
+    freshness.set_defaults(func=_cmd_pixi_check_git_freshness)
 
     return parser
 
