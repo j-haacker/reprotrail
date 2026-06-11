@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from reprotrail import epochs
 from reprotrail.pixi import (
     editable_dependency_failures,
+    environment_summary,
+    package_records,
     pixi_dependency_records,
     repo_paths_with_dependencies,
 )
@@ -94,6 +97,154 @@ def test_pixi_dependency_records_append_resolved_editable_git_repos(tmp_path):
 
     assert editable_dependency_failures(records, allow_editable=True) == []
     assert str(dep.resolve()) in repos
+
+
+def test_package_records_include_direct_url(monkeypatch):
+    def fake_distribution(name):
+        assert name == "example-library"
+        return SimpleNamespace(
+            metadata={"Name": "example-library"},
+            version="0.1.0",
+            read_text=lambda filename: (
+                json.dumps(
+                    {
+                        "url": "ssh://github/example-org/example-library.git",
+                        "vcs_info": {
+                            "vcs": "git",
+                            "commit_id": "85d6cc72",
+                            "requested_revision": "main",
+                        },
+                    }
+                )
+                if filename == "direct_url.json"
+                else None
+            ),
+        )
+
+    monkeypatch.setattr("reprotrail.pixi.importlib.metadata.distribution", fake_distribution)
+
+    assert package_records(("example-library",)) == [
+        {
+            "requested_name": "example-library",
+            "name": "example-library",
+            "version": "0.1.0",
+            "direct_url": {
+                "url": "https://github.com/example-org/example-library",
+                "vcs_info": {
+                    "vcs": "git",
+                    "commit_id": "85d6cc72",
+                    "requested_revision": "main",
+                },
+            },
+        }
+    ]
+
+
+def test_package_records_redact_local_file_direct_url(monkeypatch):
+    def fake_distribution(name):
+        assert name == "reprotrail"
+        return SimpleNamespace(
+            metadata={"Name": "reprotrail"},
+            version="0.1.0",
+            read_text=lambda filename: (
+                json.dumps(
+                    {
+                        "url": "file:///workspace/example-project",
+                        "dir_info": {"editable": True},
+                    }
+                )
+                if filename == "direct_url.json"
+                else None
+            ),
+        )
+
+    monkeypatch.setattr("reprotrail.pixi.importlib.metadata.distribution", fake_distribution)
+
+    assert package_records(("reprotrail",))[0]["direct_url"] == {
+        "url": "<redacted-local-path>",
+        "url_kind": "file",
+        "path_redacted": True,
+        "dir_info": {"editable": True},
+    }
+
+
+def test_environment_summary_contains_runtime_packages(tmp_path, monkeypatch):
+    monkeypatch.setattr("reprotrail.pixi.importlib.metadata.version", lambda name: "0.1.0")
+    monkeypatch.setattr(
+        "reprotrail.pixi.importlib.metadata.distribution",
+        lambda name: SimpleNamespace(
+            metadata={"Name": name},
+            version="0.1.0",
+            read_text=lambda filename: (
+                json.dumps(
+                    {
+                        "url": "ssh://github/example-org/example-library.git",
+                        "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
+                    }
+                )
+                if filename == "direct_url.json"
+                else None
+            ),
+        ),
+    )
+
+    summary = environment_summary(
+        project_root=tmp_path,
+        pixi_environment="analysis",
+        dependency_records=[],
+        allow_editable=False,
+        package_names=("example-library",),
+        env_var_whitelist=(),
+    )
+
+    assert summary["packages"] == {"example-library": "0.1.0"}
+    assert summary["runtime_packages"] == [
+        {
+            "requested_name": "example-library",
+            "name": "example-library",
+            "version": "0.1.0",
+            "direct_url": {
+                "url": "https://github.com/example-org/example-library",
+                "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
+            },
+        }
+    ]
+
+
+def test_dependency_snapshot_digest_changes_when_git_package_commit_changes(tmp_path):
+    first = epochs.build_dependency_snapshot(
+        project_root=tmp_path,
+        package_versions_payload={"example-library": "0.1.0"},
+        runtime_packages_payload=[
+            {
+                "requested_name": "example-library",
+                "name": "example-library",
+                "version": "0.1.0",
+                "direct_url": {
+                    "url": "https://github.com/example-org/example-library",
+                    "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
+                },
+            }
+        ],
+    )
+    changed = epochs.build_dependency_snapshot(
+        project_root=tmp_path,
+        package_versions_payload={"example-library": "0.1.0"},
+        runtime_packages_payload=[
+            {
+                "requested_name": "example-library",
+                "name": "example-library",
+                "version": "0.1.0",
+                "direct_url": {
+                    "url": "https://github.com/example-org/example-library",
+                    "vcs_info": {"vcs": "git", "commit_id": "7a69099"},
+                },
+            }
+        ],
+    )
+
+    assert first["digest"] != changed["digest"]
+    assert epochs.diff_snapshots(first, changed) == ["package example-library source commit changed: 85d6cc72 -> 7a69099"]
 
 
 def test_dependency_contract_initializes_and_accepts_epochs(tmp_path):

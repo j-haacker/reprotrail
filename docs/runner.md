@@ -13,14 +13,20 @@ reprotrail run \
 The runner records:
 
 - command, start/end time, return code, and signal failures
-- configured software repository Git states
+- project repository Git state in `project_repo`
+- active external editable/path dependency Git states in `software_repos`
+- diagnostic configured repository Git states in `configured_repos`
 - dirty working tree policy and tracked dirty patches
-- Pixi lockfile and environment summary when `pixi.lock` is present
+- Pixi lockfile and environment summary, including `runtime_packages`, when
+  `pixi.lock` is present
 - dependency snapshot and accepted epoch when a contract exists
 - product metadata when `--product-output` or wrapped `--output` is available
 - product package README/license/RO-Crate sidecars when finalization succeeds
 
-Dirty repositories fail before execution unless `--allow-dirty` is set.
+Dirty trusted runtime repositories fail before execution unless `--allow-dirty`
+is set. Trusted runtime repositories are the project repo and active external
+editable/path dependencies. Repos listed only in `[tool.reprotrail].repos` or
+`--repo` are diagnostic candidates and do not block execution when inactive.
 External editable/path Pixi dependencies fail unless `--allow-editable` is set
 and the dependency resolves to a Git repository.
 
