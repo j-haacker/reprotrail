@@ -155,10 +155,44 @@ def collect_software_states(repos: list[str], log: Path) -> list[dict[str, Any]]
     return states
 
 
+def _state_repo_root(state: dict[str, Any]) -> Path | None:
+    value = state.get("_repo_root") or state.get("repo_root") or state.get("label")
+    if not value:
+        return None
+    try:
+        return Path(str(value)).resolve()
+    except OSError:
+        return None
+
+
+def diagnostic_software_states(
+    *,
+    candidates: list[str],
+    trusted_states: list[dict[str, Any]],
+    log: Path,
+) -> list[dict[str, Any]]:
+    """Return configured repo states that are not trusted runtime repos."""
+
+    trusted_roots = {root for state in trusted_states if (root := _state_repo_root(state)) is not None}
+    diagnostics = []
+    seen: set[Path] = set()
+    for state in collect_software_states(candidates, log):
+        root = _state_repo_root(state)
+        if root is None or root in trusted_roots or root in seen:
+            continue
+        seen.add(root)
+        diagnostics.append(state)
+    return diagnostics
+
+
 def public_record(payload: dict[str, Any]) -> dict[str, Any]:
     record = dict(payload)
+    if "project_repo" in record and record["project_repo"]:
+        record["project_repo"] = public_git_state(record["project_repo"])
     if "software_repos" in record:
         record["software_repos"] = [public_git_state(state) for state in record.get("software_repos") or []]
+    if "configured_repos" in record:
+        record["configured_repos"] = [public_git_state(state) for state in record.get("configured_repos") or []]
     return record
 
 
@@ -249,8 +283,16 @@ def run_with_provenance(
     with log_path.open("w", encoding="utf-8") as handle:
         handle.write(f"COMMAND: {' '.join(command)}\n\n")
 
-    inspected_repos = repo_paths_with_dependencies(repos or list(settings.repos), dependency_records)
-    software_states = collect_software_states(inspected_repos, log_path)
+    project_states = collect_software_states([str(project_root)], log_path)
+    project_state = project_states[0] if project_states else None
+    dependency_repo_paths = repo_paths_with_dependencies([], dependency_records)
+    software_states = collect_software_states(dependency_repo_paths, log_path)
+    trusted_states = ([project_state] if project_state else []) + software_states
+    configured_states = diagnostic_software_states(
+        candidates=repos or list(settings.repos),
+        trusted_states=trusted_states,
+        log=log_path,
+    )
     environment_refs: dict[str, Any] = {}
     warnings: list[str] = []
     if run_root is not None and lockfile.exists():
@@ -277,9 +319,12 @@ def run_with_provenance(
         "allow_dirty": allow_dirty,
         "allow_editable": allow_editable,
         "software_repos": software_states,
+        "configured_repos": configured_states,
         "input_paths": [],
         "warnings": warnings,
     }
+    if project_state:
+        start_payload["project_repo"] = project_state
     artifact_root = _artifact_root_payload(run_root, provenance_path)
     if artifact_root:
         start_payload["artifact_root"] = artifact_root
@@ -287,7 +332,7 @@ def run_with_provenance(
         start_payload["environment"] = environment_refs
     if product_output is not None:
         start_payload["product"] = product_record(product_output, provenance_path=provenance_path)
-    dirty = dirty_failures(software_states)
+    dirty = dirty_failures(trusted_states)
     editable = editable_dependency_failures(dependency_records, allow_editable=allow_editable)
     dirty_blocked = bool(dirty and not allow_dirty)
     if dirty_blocked or editable:
@@ -309,7 +354,9 @@ def run_with_provenance(
             handle.write(message + "\n")
         raise RunError(message)
 
-    _write_dirty_patch_refs(software_states, run_root)
+    _write_dirty_patch_refs(trusted_states, run_root)
+    if project_state:
+        start_payload["project_repo"] = project_state
     start_payload["software_repos"] = software_states
     dependency_snapshot = None
     dependency_epoch = None
