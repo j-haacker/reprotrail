@@ -11,6 +11,7 @@ introduction
 provenance
 runner
 products
+pixi
 epochs
 reproduce
 configuration
