@@ -220,7 +220,7 @@ def read_provenance(path: Path | None) -> dict[str, Any]:
 
 def merge_declared_inputs(
     declared_states: list[InputPathState],
-    child_records: list[dict[str, Any]],
+    child_records: list[InputPathState | Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Keep declared inputs alongside input records written by the child."""
 
@@ -238,7 +238,8 @@ def merge_declared_inputs(
             indexes[resolved] = len(merged) - 1
         aliases[str(record.get("path") or "")] = resolved
         aliases[str(state.path)] = resolved
-    for record in child_records:
+    for child_record in child_records:
+        record = public_input_path_state(child_record)
         raw_path = str(record.get("path") or "")
         if not raw_path:
             merged.append(record)
