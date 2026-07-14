@@ -169,6 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--allow-partial-metadata", action="store_true")
     run.add_argument("--provenance-json")
     run.add_argument("--product-output")
+    run.add_argument("--input", action="append")
     run.add_argument("command", nargs=argparse.REMAINDER)
     run.set_defaults(func=_cmd_run)
 
