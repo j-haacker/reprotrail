@@ -174,6 +174,23 @@ def test_runner_records_declared_inputs_before_and_after_command(tmp_path):
     assert [item["path"] for item in report["input_paths"]] == expected_paths
 
 
+def test_runner_returns_declared_inputs_without_a_sidecar_path(tmp_path):
+    project = _git_repo(tmp_path / "project")
+    _lock(project)
+    declared = tmp_path / "declared.txt"
+    declared.write_text("declared\n", encoding="utf-8")
+
+    report = run_with_provenance(
+        command=[sys.executable, "-c", "pass"],
+        log=tmp_path / "run.log",
+        inputs=[declared],
+        settings=_settings(project, tmp_path / "inactive"),
+    )
+
+    assert report["status"] == "completed"
+    assert report["input_paths"][0]["path"] == str(declared.resolve())
+
+
 def test_runner_keeps_declared_and_child_added_inputs(tmp_path):
     project = _git_repo(tmp_path / "project")
     _lock(project)
