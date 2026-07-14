@@ -50,14 +50,21 @@ def test_parser_accepts_run_and_epoch_commands():
             "--allow-partial-metadata",
             "--provenance-json",
             "run.prov.json",
+            "--input",
+            "source-a.nc",
+            "--input",
+            "source-b.nc",
             "--",
             "python",
             "-c",
             "pass",
+            "--input",
+            "child-input.nc",
         ]
     )
-    assert run.command == ["--", "python", "-c", "pass"]
+    assert run.command == ["--", "python", "-c", "pass", "--input", "child-input.nc"]
     assert run.allow_partial_metadata is True
+    assert run.input == ["source-a.nc", "source-b.nc"]
 
     finalize = parser.parse_args(
         [

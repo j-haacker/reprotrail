@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from datetime import datetime, timezone
 
@@ -116,3 +117,22 @@ def test_synthetic_dvc_file_is_detected(tmp_path):
 
     assert state.backend == "dvc"
     assert state.metadata["dvc"]["outputs"][0]["md5"] == "abc123"
+
+
+def test_product_provenance_sidecar_is_detected(tmp_path):
+    product = tmp_path / "effective-config.json"
+    product.write_text("{}\n", encoding="utf-8")
+    provenance = tmp_path / "effective-config.prov.json"
+    provenance.write_text('{"schema_version": "1"}\n', encoding="utf-8")
+    digest = hashlib.sha256(provenance.read_bytes()).hexdigest()
+    (tmp_path / "effective-config.prov.json.sha256").write_text(
+        f"{digest}  effective-config.prov.json\n",
+        encoding="utf-8",
+    )
+
+    state = get_input_path_state(product)
+
+    assert state.metadata["product_provenance"] == {
+        "path": "effective-config.prov.json",
+        "sha256": digest,
+    }
