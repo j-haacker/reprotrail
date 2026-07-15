@@ -331,6 +331,22 @@ def _dvc_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
     return metadata
 
 
+def _product_provenance_metadata(path: Path) -> dict[str, Any] | None:
+    provenance_path = path.parent / f"{path.stem}.prov.json"
+    if not provenance_path.is_file():
+        return None
+    metadata: dict[str, Any] = {"path": provenance_path.name}
+    checksum_path = provenance_path.with_suffix(f"{provenance_path.suffix}.sha256")
+    if checksum_path.is_file():
+        try:
+            digest = checksum_path.read_text(encoding="utf-8").split(maxsplit=1)[0]
+        except (OSError, IndexError):
+            digest = ""
+        if re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+            metadata["sha256"] = digest.lower()
+    return metadata
+
+
 def summarize_directory(path: Path | str, *, max_entries: int = 20_000) -> dict[str, Any]:
     """Summarize a directory without embedding a full file listing."""
 
@@ -388,6 +404,9 @@ def get_input_path_state(path: Path | str) -> InputPathState:
     dvc = _dvc_metadata(target, repo_root, rel)
     lfs = _lfs_metadata(target, repo_root, rel)
     metadata.update({"lfs": lfs, "dvc": dvc})
+    product_provenance = _product_provenance_metadata(target)
+    if product_provenance:
+        metadata["product_provenance"] = product_provenance
     if dvc["dvc_files"]:
         backend: Backend = "dvc"
     elif lfs.get("tracked_by_lfs") or lfs.get("is_pointer_file"):
@@ -443,8 +462,9 @@ def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[s
     }
     if public_metadata:
         result["metadata"] = public_metadata
-    if data.get("git_state"):
-        result["git"] = public_git_state(data["git_state"])
+    git_state = data.get("git_state") or data.get("git")
+    if git_state:
+        result["git"] = public_git_state(git_state)
     if data.get("git_status"):
         result["git_status"] = data["git_status"]
     if data.get("error"):
