@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import signal
 import subprocess
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,14 @@ from .pixi import (
     write_environment_bundle,
 )
 from .products import finalize_product_provenance, product_record, product_sidecars
-from .provenance import get_git_state, public_git_state, run_git
+from .provenance import (
+    InputPathState,
+    get_git_state,
+    get_input_path_states,
+    public_git_state,
+    public_input_path_state,
+    run_git,
+)
 from .settings import ReprotrailSettings, load_settings
 
 
@@ -193,6 +201,8 @@ def public_record(payload: dict[str, Any]) -> dict[str, Any]:
         record["software_repos"] = [public_git_state(state) for state in record.get("software_repos") or []]
     if "configured_repos" in record:
         record["configured_repos"] = [public_git_state(state) for state in record.get("configured_repos") or []]
+    if "input_paths" in record:
+        record["input_paths"] = [public_input_path_state(state) for state in record.get("input_paths") or []]
     return record
 
 
@@ -206,6 +216,68 @@ def read_provenance(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists():
         return {}
     return read_json(path)
+
+
+def merge_declared_inputs(
+    declared_states: list[InputPathState],
+    child_records: list[InputPathState | Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep declared inputs alongside input records written by the child."""
+
+    merged: list[dict[str, Any]] = []
+    indexes: dict[Path, int] = {}
+    aliases: dict[str, Path] = {}
+    for state in declared_states:
+        record = public_input_path_state(state)
+        resolved = state.path.resolve()
+        if resolved in indexes:
+            index = indexes[resolved]
+            merged[index] = _merge_input_records(merged[index], record)
+        else:
+            merged.append(record)
+            indexes[resolved] = len(merged) - 1
+        aliases[str(record.get("path") or "")] = resolved
+        aliases[str(state.path)] = resolved
+    for child_record in child_records:
+        record = public_input_path_state(child_record)
+        raw_path = str(record.get("path") or "")
+        if not raw_path:
+            merged.append(record)
+            continue
+        resolved = aliases.get(raw_path)
+        if resolved is None:
+            resolved = Path(raw_path).expanduser().resolve()
+        if resolved in indexes:
+            index = indexes[resolved]
+            merged[index] = _merge_input_records(merged[index], record)
+            continue
+        merged.append(record)
+        indexes[resolved] = len(merged) - 1
+    return merged
+
+
+def _merge_missing(primary: Any, secondary: Any) -> Any:
+    if isinstance(primary, Mapping) and isinstance(secondary, Mapping):
+        merged = dict(primary)
+        for key, value in secondary.items():
+            merged[key] = _merge_missing(merged[key], value) if key in merged else value
+        return merged
+    if isinstance(primary, list) and isinstance(secondary, list):
+        return primary + [item for item in secondary if item not in primary]
+    return primary if primary not in (None, "") else secondary
+
+
+def _merge_input_records(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    existing_path = existing.get("path")
+    merged = _merge_missing(existing, incoming)
+    backend_priority = {"unknown": 0, "filesystem": 1, "git": 2, "git-lfs": 3, "dvc": 3}
+    existing_backend = str(existing.get("backend") or "unknown")
+    incoming_backend = str(incoming.get("backend") or "unknown")
+    if backend_priority.get(incoming_backend, 0) > backend_priority.get(existing_backend, 0):
+        merged["backend"] = incoming_backend
+    if existing_path:
+        merged["path"] = existing_path
+    return merged
 
 
 def dirty_failures(states: list[dict[str, Any]]) -> list[str]:
@@ -261,6 +333,7 @@ def run_with_provenance(
     allow_partial_metadata: bool = False,
     provenance_json: str | Path | None = None,
     product_output: str | Path | None = None,
+    inputs: list[str | Path] | None = None,
     settings: ReprotrailSettings | None = None,
 ) -> dict[str, Any]:
     """Run a command while recording v1 reprotrail provenance."""
@@ -279,6 +352,7 @@ def run_with_provenance(
     lockfile = project_root / settings.pixi_lockfile
     lock_text = lockfile.read_text(encoding="utf-8") if lockfile.exists() else ""
     dependency_records = pixi_dependency_records(lock_text, pixi_environment, project_root) if lock_text else []
+    declared_input_states = get_input_path_states(inputs or [])
 
     with log_path.open("w", encoding="utf-8") as handle:
         handle.write(f"COMMAND: {' '.join(command)}\n\n")
@@ -320,7 +394,7 @@ def run_with_provenance(
         "allow_editable": allow_editable,
         "software_repos": software_states,
         "configured_repos": configured_states,
-        "input_paths": [],
+        "input_paths": declared_input_states,
         "warnings": warnings,
     }
     if project_state:
@@ -387,6 +461,11 @@ def run_with_provenance(
             handle.write("\n" + failure["error"] + "\n")
 
     end_payload = read_provenance(provenance_path) or start_payload
+    if declared_input_states:
+        end_payload["input_paths"] = merge_declared_inputs(
+            declared_input_states,
+            end_payload.get("input_paths") or [],
+        )
     end_payload.update(
         {
             "status": "completed" if proc.returncode == 0 else "failed",
@@ -444,4 +523,5 @@ def run_from_namespace(args: argparse.Namespace) -> dict[str, Any]:
         allow_partial_metadata=args.allow_partial_metadata,
         provenance_json=args.provenance_json,
         product_output=args.product_output,
+        inputs=args.input,
     )
