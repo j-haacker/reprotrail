@@ -73,6 +73,9 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["linux-64"]
