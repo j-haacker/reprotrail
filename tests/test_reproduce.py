@@ -14,6 +14,16 @@ def _run(args: list[str], cwd: Path) -> None:
     subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
 
 
+def _git_output(args: list[str], cwd: Path) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
 def _git_repo(tmp_path: Path, name: str, *, files: dict[str, str] | None = None) -> Path:
     repo = tmp_path / name
     repo.mkdir()
@@ -34,13 +44,7 @@ def _git_repo(tmp_path: Path, name: str, *, files: dict[str, str] | None = None)
 
 
 def _commit(repo: Path) -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    return _git_output(["rev-parse", "HEAD"], repo)
 
 
 def _sha(path: Path) -> str:
@@ -146,6 +150,42 @@ def _rewrite_with_project_repo(provenance: Path) -> None:
         f"{_sha(provenance)}  {provenance.name}\n",
         encoding="utf-8",
     )
+
+
+def _rewrite_repo_state(provenance: Path, name: str, **updates: str | None) -> None:
+    payload = json.loads(provenance.read_text(encoding="utf-8"))
+    repos = [payload.get("project_repo"), *(payload.get("software_repos") or [])]
+    repo = next(item for item in repos if item and item.get("name") == name)
+    for key, value in updates.items():
+        if value is None:
+            repo.pop(key, None)
+        else:
+            repo[key] = value
+    provenance.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (provenance.parent / f"{provenance.name}.sha256").write_text(
+        f"{_sha(provenance)}  {provenance.name}\n",
+        encoding="utf-8",
+    )
+
+
+def _deleted_branch_remote(
+    tmp_path: Path,
+    name: str,
+    *,
+    files: dict[str, str] | None = None,
+) -> tuple[Path, str, str]:
+    source = _git_repo(tmp_path, f"{name}-source", files=files)
+    commit = _commit(source)
+    remote = tmp_path / f"{name}-remote.git"
+    _run(["git", "clone", "--bare", str(source), str(remote)], tmp_path)
+    fallback_branch = next(
+        branch
+        for branch in _git_output(["branch", "--format=%(refname:short)"], source).splitlines()
+        if branch != "dev"
+    )
+    _run(["git", "symbolic-ref", "HEAD", f"refs/heads/{fallback_branch}"], remote)
+    _run(["git", "update-ref", "-d", "refs/heads/dev"], remote)
+    return source, remote.as_uri(), commit
 
 
 def test_reproduce_sets_up_production_workspace_without_editable_deps(tmp_path):
@@ -284,5 +324,142 @@ def test_reproduce_existing_workspace_requires_resume_or_force(tmp_path):
         reproduce_from_provenance(
             provenance=provenance,
             workspace=workspace,
+            install=False,
+        )
+
+
+def test_reproduce_fetches_recorded_commit_after_remote_branch_is_deleted(tmp_path):
+    main_repo, remote_url, commit = _deleted_branch_remote(
+        tmp_path,
+        "main",
+        files={"pyproject.toml": "[tool.pixi.workspace]\n"},
+    )
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        env_name="dev",
+        lock_text="version: 6\nenvironments:\n  dev:\n    packages: {}\n",
+    )
+    _rewrite_repo_state(provenance, "main", remote_url=remote_url)
+
+    report = reproduce_from_provenance(
+        provenance=provenance,
+        workspace=tmp_path / "workspace",
+        install=False,
+    )
+
+    workspace = tmp_path / "workspace"
+    assert _commit(workspace) == commit
+    assert _git_output(["branch", "--show-current"], workspace) == "dev"
+    upstream = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        cwd=workspace,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert upstream.returncode != 0
+    assert ["git", "fetch", "origin", commit] in [item["command"] for item in report["commands"]]
+    clone_command = next(item["command"] for item in report["commands"] if item["step"] == "clone main")
+    assert "--no-checkout" in clone_command
+    assert "--branch" not in clone_command
+
+
+def test_reproduce_checks_out_recorded_commit_detached_without_branch(tmp_path):
+    main_repo = _git_repo(tmp_path, "main", files={"pyproject.toml": "[tool.pixi.workspace]\n"})
+    commit = _commit(main_repo)
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        env_name="dev",
+        lock_text="version: 6\nenvironments:\n  dev:\n    packages: {}\n",
+    )
+    _rewrite_repo_state(provenance, "main", branch="detached")
+
+    reproduce_from_provenance(
+        provenance=provenance,
+        workspace=tmp_path / "workspace",
+        install=False,
+    )
+
+    workspace = tmp_path / "workspace"
+    assert _commit(workspace) == commit
+    assert _git_output(["branch", "--show-current"], workspace) == ""
+
+
+def test_reproduce_fetches_recorded_commit_for_editable_dependency(tmp_path):
+    main_repo = _git_repo(
+        tmp_path,
+        "main",
+        files={
+            "pyproject.toml": (
+                '[tool.pixi.feature.utils-local.pypi-dependencies]\ndep = { path = "../dep", editable = true }\n'
+            )
+        },
+    )
+    dep_repo, dep_remote_url, dep_commit = _deleted_branch_remote(tmp_path, "dep")
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        dep_repo=dep_repo,
+        env_name="dev",
+        editable=True,
+        lock_text="version: 6\nenvironments:\n  dev:\n    packages:\n      linux-64:\n      - pypi: ../dep\n",
+    )
+    _rewrite_repo_state(provenance, "dep", remote_url=dep_remote_url)
+
+    report = reproduce_from_provenance(
+        provenance=provenance,
+        workspace=tmp_path / "workspace",
+        install=False,
+    )
+
+    restored_dep = tmp_path / "workspace" / "repos" / "dep"
+    assert _commit(restored_dep) == dep_commit
+    assert _git_output(["branch", "--show-current"], restored_dep) == "dev"
+    assert ["git", "fetch", "origin", dep_commit] in [item["command"] for item in report["commands"]]
+
+
+def test_reproduce_warns_and_falls_back_to_branch_without_recorded_commit(tmp_path):
+    main_repo = _git_repo(tmp_path, "main", files={"pyproject.toml": "[tool.pixi.workspace]\n"})
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        env_name="dev",
+        lock_text="version: 6\nenvironments:\n  dev:\n    packages: {}\n",
+    )
+    _rewrite_repo_state(provenance, "main", commit=None)
+
+    report = reproduce_from_provenance(
+        provenance=provenance,
+        workspace=tmp_path / "workspace",
+        strict=True,
+        install=False,
+    )
+
+    assert report["status"] == "failed_strict"
+    assert report["warnings"] == ["Repository 'main' has no recorded commit; falling back to branch 'dev'."]
+    clone_command = next(item["command"] for item in report["commands"] if item["step"] == "clone main")
+    assert clone_command[2:6] == ["--branch", "dev", "--single-branch", str(main_repo)]
+
+
+def test_reproduce_fails_when_recorded_commit_is_unavailable(tmp_path):
+    main_repo = _git_repo(tmp_path, "main", files={"pyproject.toml": "[tool.pixi.workspace]\n"})
+    provenance = _write_provenance(
+        tmp_path / "run",
+        main_repo=main_repo,
+        env_name="dev",
+        lock_text="version: 6\nenvironments:\n  dev:\n    packages: {}\n",
+    )
+    missing_commit = "a" * 40
+    _rewrite_repo_state(provenance, "main", commit=missing_commit)
+
+    with pytest.raises(
+        ReproductionError,
+        match=f"Repository 'main' recorded commit {missing_commit}, but it is unavailable from the repository source",
+    ):
+        reproduce_from_provenance(
+            provenance=provenance,
+            workspace=tmp_path / "workspace",
             install=False,
         )
