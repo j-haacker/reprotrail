@@ -1,5 +1,10 @@
 # Pixi
 
+Pixi-backed commands invoke the external `pixi` executable. Installing the
+Python package from PyPI does not install Pixi; follow the
+[Pixi installation guide](https://pixi.sh/latest/installation/) first. See
+{ref}`Pixi in the terminology guide <concept-pixi>` for its role in reprotrail.
+
 (cli-pixi-check-git-freshness)=
 ## `reprotrail pixi check-git-freshness` arguments
 
@@ -10,12 +15,9 @@ and unselected package changes do not make the check stale.
 
 ```bash
 reprotrail pixi check-git-freshness \
-  --env downscale \
-  --package c4v-utils \
-  --package reprotrail \
-  --package snippets \
-  --package xesmf \
-  --package xsdba
+  --env analysis \
+  --package example-library \
+  --package reprotrail
 ```
 
 The command exits with `0` when selected Git sources are fresh, `1` when one or
@@ -38,8 +40,8 @@ Machine-readable output is available with `--json`:
 
 ```bash
 reprotrail pixi check-git-freshness \
-  --env downscale \
-  --package c4v-utils \
+  --env analysis \
+  --package example-library \
   --json
 ```
 
@@ -47,8 +49,8 @@ Fresh output has an empty `packages` list:
 
 ```json
 {
-  "checked_packages": ["c4v-utils"],
-  "environment": "downscale",
+  "checked_packages": ["example-library"],
+  "environment": "analysis",
   "packages": [],
   "status": "fresh"
 }

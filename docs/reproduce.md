@@ -14,6 +14,12 @@ already contain it. When a branch name was recorded, reproduction creates that
 branch locally at the recorded commit without an upstream. Records without a
 usable branch name are checked out with a detached HEAD.
 
+Reproduction invokes the external `pixi` executable and may contact recorded
+Git remotes and package channels. Preparing a workspace does not execute the
+recorded command unless `--execute` is supplied. Inspect the restored sources,
+input mappings, warnings, and `REPRODUCTION.md` before executing provenance from
+an untrusted source.
+
 An exact hash identifies a commit but does not archive it. Reproduction cannot
 restore a commit after the repository source has garbage-collected it or refuses
 to serve it. Legacy or incomplete records without a commit fall back to their

@@ -25,16 +25,16 @@ def _mock_pixi(monkeypatch, payload: dict | None = None, *, returncode: int = 0,
     return calls
 
 
-def _git_change(name: str = "c4v-utils") -> dict:
+def _git_change(name: str = "example-library") -> dict:
     return {
         "version": 1,
         "environment": {
-            "downscale": {
+            "analysis": {
                 "linux-64": [
                     {
                         "name": name,
                         "before": {
-                            "pypi": "git+ssh://github/boku-met/c4v-utils.git@85d6cc72",
+                            "pypi": "git+ssh://github/example-org/example-library.git@85d6cc72",
                             "vcs_info": {
                                 "vcs": "git",
                                 "commit_id": "85d6cc72",
@@ -42,7 +42,7 @@ def _git_change(name: str = "c4v-utils") -> dict:
                             },
                         },
                         "after": {
-                            "pypi": "git+ssh://github/boku-met/c4v-utils.git@7a69099",
+                            "pypi": "git+ssh://github/example-org/example-library.git@7a69099",
                             "vcs_info": {
                                 "vcs": "git",
                                 "commit_id": "7a69099",
@@ -62,15 +62,15 @@ def test_check_pixi_git_freshness_fresh_output(tmp_path, monkeypatch):
 
     result = check_pixi_git_freshness(
         tmp_path,
-        "downscale",
-        ("c4v-utils", "reprotrail"),
+        "analysis",
+        ("example-library", "reprotrail"),
         manifest_path=tmp_path / "pyproject.toml",
     )
 
     assert result == {
         "status": "fresh",
-        "environment": "downscale",
-        "checked_packages": ["c4v-utils", "reprotrail"],
+        "environment": "analysis",
+        "checked_packages": ["example-library", "reprotrail"],
         "packages": [],
     }
     command, kwargs = calls[0]
@@ -82,8 +82,8 @@ def test_check_pixi_git_freshness_fresh_output(tmp_path, monkeypatch):
         "--manifest-path",
         str(tmp_path / "pyproject.toml"),
         "-e",
-        "downscale",
-        "c4v-utils",
+        "analysis",
+        "example-library",
         "reprotrail",
     ]
     assert kwargs["cwd"] == tmp_path
@@ -93,23 +93,23 @@ def test_check_pixi_git_freshness_fresh_output(tmp_path, monkeypatch):
 def test_check_pixi_git_freshness_reports_selected_git_change(tmp_path, monkeypatch):
     _mock_pixi(monkeypatch, _git_change())
 
-    result = check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+    result = check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
     assert result["status"] == "stale"
     assert result["packages"] == [
         {
-            "name": "c4v-utils",
+            "name": "example-library",
             "status": "changed",
             "platform": "linux-64",
             "from": {
                 "kind": "git",
-                "url": "https://github.com/boku-met/c4v-utils",
+                "url": "https://github.com/example-org/example-library",
                 "commit": "85d6cc72",
                 "requested_revision": "main",
             },
             "to": {
                 "kind": "git",
-                "url": "https://github.com/boku-met/c4v-utils",
+                "url": "https://github.com/example-org/example-library",
                 "commit": "7a69099",
                 "requested_revision": "main",
             },
@@ -121,12 +121,12 @@ def test_check_pixi_git_freshness_extracts_revision_from_direct_git_url(tmp_path
     payload = {
         "version": 1,
         "environment": {
-            "downscale": {
+            "analysis": {
                 "linux-64": [
                     {
-                        "name": "c4v-utils",
-                        "before": {"pypi": "git+https://github.com/boku-met/c4v-utils@85d6cc72"},
-                        "after": {"pypi": "git+https://github.com/boku-met/c4v-utils@7a69099"},
+                        "name": "example-library",
+                        "before": {"pypi": "git+https://github.com/example-org/example-library@85d6cc72"},
+                        "after": {"pypi": "git+https://github.com/example-org/example-library@7a69099"},
                         "type": "pypi",
                     }
                 ]
@@ -135,17 +135,17 @@ def test_check_pixi_git_freshness_extracts_revision_from_direct_git_url(tmp_path
     }
     _mock_pixi(monkeypatch, payload)
 
-    result = check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+    result = check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
     assert result["status"] == "stale"
     assert result["packages"][0]["from"] == {
         "kind": "git",
-        "url": "https://github.com/boku-met/c4v-utils",
+        "url": "https://github.com/example-org/example-library",
         "requested_revision": "85d6cc72",
     }
     assert result["packages"][0]["to"] == {
         "kind": "git",
-        "url": "https://github.com/boku-met/c4v-utils",
+        "url": "https://github.com/example-org/example-library",
         "requested_revision": "7a69099",
     }
 
@@ -154,11 +154,11 @@ def test_check_pixi_git_freshness_ignores_unselected_and_non_git_changes(tmp_pat
     payload = {
         "version": 1,
         "environment": {
-            "downscale": {
+            "analysis": {
                 "linux-64": [
-                    _git_change("snippets")["environment"]["downscale"]["linux-64"][0],
+                    _git_change("helper-library")["environment"]["analysis"]["linux-64"][0],
                     {
-                        "name": "c4v-utils",
+                        "name": "example-library",
                         "before": {"conda": "https://conda.example/ruff-1.0.0.conda", "sha256": "a"},
                         "after": {"conda": "https://conda.example/ruff-1.0.1.conda", "sha256": "b"},
                         "type": "conda",
@@ -169,7 +169,7 @@ def test_check_pixi_git_freshness_ignores_unselected_and_non_git_changes(tmp_pat
     }
     _mock_pixi(monkeypatch, payload)
 
-    result = check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+    result = check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
     assert result["status"] == "fresh"
     assert result["packages"] == []
@@ -179,7 +179,7 @@ def test_check_pixi_git_freshness_errors_on_pixi_failure(tmp_path, monkeypatch):
     _mock_pixi(monkeypatch, returncode=1, stderr="network unavailable")
 
     with pytest.raises(PixiGitFreshnessError, match="network unavailable"):
-        check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+        check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
 
 def test_check_pixi_git_freshness_errors_on_invalid_json(tmp_path, monkeypatch):
@@ -189,7 +189,7 @@ def test_check_pixi_git_freshness_errors_on_invalid_json(tmp_path, monkeypatch):
     monkeypatch.setattr("reprotrail.pixi.subprocess.run", fake_run)
 
     with pytest.raises(PixiGitFreshnessError, match="invalid JSON"):
-        check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+        check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
 
 def test_check_pixi_git_freshness_errors_on_os_error(tmp_path, monkeypatch):
@@ -199,19 +199,19 @@ def test_check_pixi_git_freshness_errors_on_os_error(tmp_path, monkeypatch):
     monkeypatch.setattr("reprotrail.pixi.subprocess.run", fake_run)
 
     with pytest.raises(PixiGitFreshnessError, match="pixi missing"):
-        check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+        check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
 
 def test_check_pixi_git_freshness_errors_on_unparseable_git_change(tmp_path, monkeypatch):
     payload = {
         "version": 1,
         "environment": {
-            "downscale": {
+            "analysis": {
                 "linux-64": [
                     {
-                        "name": "c4v-utils",
-                        "before": {"pypi": "git+https://github.com/boku-met/c4v-utils.git"},
-                        "after": {"pypi": "git+https://github.com/boku-met/c4v-utils.git"},
+                        "name": "example-library",
+                        "before": {"pypi": "git+https://github.com/example-org/example-library.git"},
+                        "after": {"pypi": "git+https://github.com/example-org/example-library.git"},
                         "type": "pypi",
                     }
                 ]
@@ -221,18 +221,18 @@ def test_check_pixi_git_freshness_errors_on_unparseable_git_change(tmp_path, mon
     _mock_pixi(monkeypatch, payload)
 
     with pytest.raises(PixiGitFreshnessError, match="could not extract"):
-        check_pixi_git_freshness(tmp_path, "downscale", ("c4v-utils",))
+        check_pixi_git_freshness(tmp_path, "analysis", ("example-library",))
 
 
 def test_cli_pixi_check_git_freshness_json_fresh(monkeypatch, capsys):
     _mock_pixi(monkeypatch, {"version": 1, "environment": {}})
 
-    main(["pixi", "check-git-freshness", "--env", "downscale", "--package", "c4v-utils", "--json"])
+    main(["pixi", "check-git-freshness", "--env", "analysis", "--package", "example-library", "--json"])
 
     assert json.loads(capsys.readouterr().out) == {
         "status": "fresh",
-        "environment": "downscale",
-        "checked_packages": ["c4v-utils"],
+        "environment": "analysis",
+        "checked_packages": ["example-library"],
         "packages": [],
     }
 
@@ -241,7 +241,7 @@ def test_cli_pixi_check_git_freshness_stale_exit(monkeypatch, capsys):
     _mock_pixi(monkeypatch, _git_change())
 
     with pytest.raises(SystemExit) as exc:
-        main(["pixi", "check-git-freshness", "--env", "downscale", "--package", "c4v-utils", "--json"])
+        main(["pixi", "check-git-freshness", "--env", "analysis", "--package", "example-library", "--json"])
 
     assert exc.value.code == 1
     assert json.loads(capsys.readouterr().out)["status"] == "stale"
@@ -251,12 +251,12 @@ def test_cli_pixi_check_git_freshness_json_error(monkeypatch, capsys):
     _mock_pixi(monkeypatch, returncode=1, stderr="network unavailable")
 
     with pytest.raises(SystemExit) as exc:
-        main(["pixi", "check-git-freshness", "--env", "downscale", "--package", "c4v-utils", "--json"])
+        main(["pixi", "check-git-freshness", "--env", "analysis", "--package", "example-library", "--json"])
 
     assert exc.value.code == 2
     assert json.loads(capsys.readouterr().out) == {
         "status": "error",
-        "environment": "downscale",
-        "checked_packages": ["c4v-utils"],
+        "environment": "analysis",
+        "checked_packages": ["example-library"],
         "error": "pixi update dry-run failed: network unavailable",
     }

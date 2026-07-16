@@ -4,6 +4,22 @@ The `reprotrail` command-line interface groups seven executable commands into
 five common provenance workflows. Run `reprotrail --help` to list top-level
 commands, or append `--help` at any group or command level for local guidance.
 
+## Files and side effects
+
+| Command | Writes or changes |
+| --- | --- |
+| `run` | Executes the wrapped command and writes its log, provenance JSON, runtime bundle, and requested product sidecars. |
+| `finalize` | Writes or refreshes checksum, README, license, and RO-Crate sidecars; it can also stamp supported products. |
+| `template readme` | Writes one requested template file and refuses to overwrite it unless `--force` is used. |
+| `reproduce` | Creates a workspace, clones or restores repositories and the Pixi lockfile, writes `REPRODUCTION.md`, and executes only with `--execute`. |
+| `epoch check` | Initializes or accepts the dependency contract only when needed and authorized; `--dry-run` never writes it. |
+| `epoch audit` | Writes the requested audit JSON. |
+| `pixi check-git-freshness` | Runs a Pixi dry-run and does not update the lockfile or environment. |
+
+Successful commands exit with `0`. Operational or policy failures generally
+exit with `1`; argument parsing errors exit with `2`. The freshness command uses
+`1` specifically for stale selected Git sources and `2` for inspection errors.
+
 ## Command tree
 
 ```text
@@ -88,8 +104,8 @@ lockfile or environment.
 
 ```bash
 reprotrail pixi check-git-freshness \
-  --env downscale \
-  --package c4v-utils \
+  --env analysis \
+  --package example-library \
   --package reprotrail
 ```
 

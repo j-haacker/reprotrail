@@ -8,6 +8,13 @@
 - `LICENSE.md` when an explicit product license is selected
 - `ro-crate-metadata.json`
 
+Install `reprotrail[products]` to obtain RO-Crate, SPDX, xarray, and Zarr
+support. A minimal installation can still capture core provenance, but product
+finalization fails when required metadata tools are absent unless
+`--allow-partial-metadata` is explicitly selected. Partial mode writes the
+checksum and a README warning while omitting metadata it cannot construct; it
+is not equivalent to a complete product package.
+
 Product packages do not default to a license. If no product license is selected,
 reprotrail still writes the provenance checksum, README, and RO-Crate metadata
 with a warning, but it skips `LICENSE.md` and omits `license` from provenance.

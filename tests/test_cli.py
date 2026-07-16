@@ -262,9 +262,9 @@ def test_parser_accepts_run_and_epoch_commands():
             "pixi",
             "check-git-freshness",
             "--env",
-            "downscale",
+            "analysis",
             "--package",
-            "c4v-utils",
+            "example-library",
             "--package",
             "reprotrail",
             "--manifest-path",
@@ -272,8 +272,8 @@ def test_parser_accepts_run_and_epoch_commands():
             "--json",
         ]
     )
-    assert freshness.env == "downscale"
-    assert freshness.package == ["c4v-utils", "reprotrail"]
+    assert freshness.env == "analysis"
+    assert freshness.package == ["example-library", "reprotrail"]
     assert freshness.manifest_path == "pyproject.toml"
     assert freshness.json is True
 
@@ -282,6 +282,6 @@ def test_parser_requires_pixi_git_freshness_env_and_package():
     parser = build_parser()
 
     with pytest.raises(SystemExit):
-        parser.parse_args(["pixi", "check-git-freshness", "--package", "c4v-utils"])
+        parser.parse_args(["pixi", "check-git-freshness", "--package", "example-library"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["pixi", "check-git-freshness", "--env", "downscale"])
+        parser.parse_args(["pixi", "check-git-freshness", "--env", "analysis"])

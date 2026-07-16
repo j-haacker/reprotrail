@@ -101,14 +101,14 @@ def test_pixi_dependency_records_append_resolved_editable_git_repos(tmp_path):
 
 def test_package_records_include_direct_url(monkeypatch):
     def fake_distribution(name):
-        assert name == "c4v-utils"
+        assert name == "example-library"
         return SimpleNamespace(
-            metadata={"Name": "c4v-utils"},
+            metadata={"Name": "example-library"},
             version="0.1.0",
             read_text=lambda filename: (
                 json.dumps(
                     {
-                        "url": "ssh://github/boku-met/c4v-utils.git",
+                        "url": "ssh://github/example-org/example-library.git",
                         "vcs_info": {
                             "vcs": "git",
                             "commit_id": "85d6cc72",
@@ -123,13 +123,13 @@ def test_package_records_include_direct_url(monkeypatch):
 
     monkeypatch.setattr("reprotrail.pixi.importlib.metadata.distribution", fake_distribution)
 
-    assert package_records(("c4v-utils",)) == [
+    assert package_records(("example-library",)) == [
         {
-            "requested_name": "c4v-utils",
-            "name": "c4v-utils",
+            "requested_name": "example-library",
+            "name": "example-library",
             "version": "0.1.0",
             "direct_url": {
-                "url": "https://github.com/boku-met/c4v-utils",
+                "url": "https://github.com/example-org/example-library",
                 "vcs_info": {
                     "vcs": "git",
                     "commit_id": "85d6cc72",
@@ -149,7 +149,7 @@ def test_package_records_redact_local_file_direct_url(monkeypatch):
             read_text=lambda filename: (
                 json.dumps(
                     {
-                        "url": "file:///home/example/private/reprotrail",
+                        "url": "file:///workspace/example-project",
                         "dir_info": {"editable": True},
                     }
                 )
@@ -178,7 +178,7 @@ def test_environment_summary_contains_runtime_packages(tmp_path, monkeypatch):
             read_text=lambda filename: (
                 json.dumps(
                     {
-                        "url": "ssh://github/boku-met/c4v-utils.git",
+                        "url": "ssh://github/example-org/example-library.git",
                         "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
                     }
                 )
@@ -190,21 +190,21 @@ def test_environment_summary_contains_runtime_packages(tmp_path, monkeypatch):
 
     summary = environment_summary(
         project_root=tmp_path,
-        pixi_environment="downscale",
+        pixi_environment="analysis",
         dependency_records=[],
         allow_editable=False,
-        package_names=("c4v-utils",),
+        package_names=("example-library",),
         env_var_whitelist=(),
     )
 
-    assert summary["packages"] == {"c4v-utils": "0.1.0"}
+    assert summary["packages"] == {"example-library": "0.1.0"}
     assert summary["runtime_packages"] == [
         {
-            "requested_name": "c4v-utils",
-            "name": "c4v-utils",
+            "requested_name": "example-library",
+            "name": "example-library",
             "version": "0.1.0",
             "direct_url": {
-                "url": "https://github.com/boku-met/c4v-utils",
+                "url": "https://github.com/example-org/example-library",
                 "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
             },
         }
@@ -214,14 +214,14 @@ def test_environment_summary_contains_runtime_packages(tmp_path, monkeypatch):
 def test_dependency_snapshot_digest_changes_when_git_package_commit_changes(tmp_path):
     first = epochs.build_dependency_snapshot(
         project_root=tmp_path,
-        package_versions_payload={"c4v-utils": "0.1.0"},
+        package_versions_payload={"example-library": "0.1.0"},
         runtime_packages_payload=[
             {
-                "requested_name": "c4v-utils",
-                "name": "c4v-utils",
+                "requested_name": "example-library",
+                "name": "example-library",
                 "version": "0.1.0",
                 "direct_url": {
-                    "url": "https://github.com/boku-met/c4v-utils",
+                    "url": "https://github.com/example-org/example-library",
                     "vcs_info": {"vcs": "git", "commit_id": "85d6cc72"},
                 },
             }
@@ -229,14 +229,14 @@ def test_dependency_snapshot_digest_changes_when_git_package_commit_changes(tmp_
     )
     changed = epochs.build_dependency_snapshot(
         project_root=tmp_path,
-        package_versions_payload={"c4v-utils": "0.1.0"},
+        package_versions_payload={"example-library": "0.1.0"},
         runtime_packages_payload=[
             {
-                "requested_name": "c4v-utils",
-                "name": "c4v-utils",
+                "requested_name": "example-library",
+                "name": "example-library",
                 "version": "0.1.0",
                 "direct_url": {
-                    "url": "https://github.com/boku-met/c4v-utils",
+                    "url": "https://github.com/example-org/example-library",
                     "vcs_info": {"vcs": "git", "commit_id": "7a69099"},
                 },
             }
@@ -244,7 +244,9 @@ def test_dependency_snapshot_digest_changes_when_git_package_commit_changes(tmp_
     )
 
     assert first["digest"] != changed["digest"]
-    assert epochs.diff_snapshots(first, changed) == ["package c4v-utils source commit changed: 85d6cc72 -> 7a69099"]
+    assert epochs.diff_snapshots(first, changed) == [
+        "package example-library source commit changed: 85d6cc72 -> 7a69099"
+    ]
 
 
 def test_dependency_contract_initializes_and_accepts_epochs(tmp_path):
