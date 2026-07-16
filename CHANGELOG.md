@@ -22,6 +22,8 @@
 
 ### Fixed
 
+- Restore project and editable-dependency repositories from recorded commit hashes without requiring recorded branches
+  to remain available on the remote.
 - Fix runtime provenance so configured sibling repositories are not recorded as trusted runtime software when the active Pixi environment uses installed package sources instead (#4).
 
 ### Documentation
