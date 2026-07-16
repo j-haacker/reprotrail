@@ -11,6 +11,10 @@ convenience options. Use it around a shell command, inside Snakemake, or
 through Python APIs. Your workflow still owns domain logic, input
 selection, resources, and output naming.
 
+CLI help is available at every command level. Use `reprotrail --help` for the
+top-level command list, `reprotrail epoch --help` for a command group, or a
+leaf command such as `reprotrail epoch check --help` for argument details.
+
 ## General idea
 
 - Run product-producing commands through `reprotrail run`.
