@@ -244,7 +244,9 @@ def test_dependency_snapshot_digest_changes_when_git_package_commit_changes(tmp_
     )
 
     assert first["digest"] != changed["digest"]
-    assert epochs.diff_snapshots(first, changed) == ["package example-library source commit changed: 85d6cc72 -> 7a69099"]
+    assert epochs.diff_snapshots(first, changed) == [
+        "package example-library source commit changed: 85d6cc72 -> 7a69099"
+    ]
 
 
 def test_dependency_contract_initializes_and_accepts_epochs(tmp_path):

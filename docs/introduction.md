@@ -1,9 +1,11 @@
 # Using reprotrail in practice (Introduction)
 
-`reprotrail` records the practical trail behind a data-processing output: the
+`reprotrail` records the practical trail behind a data-processing output in a
+{ref}`provenance record <concept-provenance-record>`: the
 command that ran, Git state for the workflow repository and active editable
-runtime dependencies, selected input path state, Pixi runtime metadata, product
-sidecars, dependency epochs (see below), and enough information to set up a
+runtime dependencies, selected input path state, Pixi runtime metadata,
+{ref}`product sidecars <concept-product>`, {ref}`dependency epochs
+<concept-dependency-epoch>`, and enough information to set up a
 reproduction workspace.
 
 It is intentionally workflow-agnostic, but there are Python-based
@@ -108,7 +110,7 @@ license = "CC-BY-4.0"
 [[products.inputs]]
 path = "data/source.zarr"
 name = "Observed source data"
-producer = "Example Organization"
+producer = "Example Climate Center"
 license = "CC-BY-4.0"
 ```
 

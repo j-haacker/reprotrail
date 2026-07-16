@@ -1,5 +1,10 @@
 # Pixi
 
+Pixi-backed commands invoke the external `pixi` executable. Installing the
+Python package from PyPI does not install Pixi; follow the
+[Pixi installation guide](https://pixi.sh/latest/installation/) first. See
+{ref}`Pixi in the terminology guide <concept-pixi>` for its role in reprotrail.
+
 (cli-pixi-check-git-freshness)=
 ## `reprotrail pixi check-git-freshness` arguments
 
@@ -12,10 +17,7 @@ and unselected package changes do not make the check stale.
 reprotrail pixi check-git-freshness \
   --env analysis \
   --package example-library \
-  --package reprotrail \
-  --package helper-library \
-  --package xesmf \
-  --package xsdba
+  --package reprotrail
 ```
 
 The command exits with `0` when selected Git sources are fresh, `1` when one or

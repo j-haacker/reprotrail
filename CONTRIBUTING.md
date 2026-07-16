@@ -50,6 +50,13 @@ documentation, packaging, or compatibility changes. Internal-only maintenance,
 test-only changes, and refactors that do not change behavior can skip the
 changelog.
 
+## Releases
+
+Maintainers should follow the [release guide](docs/releasing.md) for version
+checks, the tag-triggered PyPI workflow, and the post-PyPI conda-forge handoff.
+Never upload a release from a local checkout or reuse a version that reached
+PyPI.
+
 ## Pull Request Checklist
 
 - Tests, linting, and documentation checks pass as relevant.

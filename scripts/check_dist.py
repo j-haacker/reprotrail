@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import re
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -27,7 +28,10 @@ FORBIDDEN_PARTS = {
     "docs",
     "tests",
 }
-FORBIDDEN_TEXT = re.compile(r"/home/[^/\s]+|local-user|file:///home/", re.IGNORECASE)
+LOCAL_PATH_TEXT = re.compile(
+    r"/(?:home|Users)/[^/\s]+/|file:///(?:home|Users)/[^/\s]+/|[A-Za-z]:\\Users\\[^\\\s]+\\",
+    re.IGNORECASE,
+)
 
 
 def _members(path: Path) -> tuple[list[str], list[bytes]]:
@@ -64,17 +68,18 @@ def check(path: Path) -> None:
 
     for payload in payloads:
         text = payload.decode("utf-8", errors="ignore")
-        if match := FORBIDDEN_TEXT.search(text):
+        if match := LOCAL_PATH_TEXT.search(text):
             raise SystemExit(f"{path.name} contains local machine text: {match.group(0)}")
 
     metadata = "\n".join(payload.decode("utf-8", errors="ignore") for payload in payloads)
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
     expected = (
-        "Version: 0.1.0",
-        "Requires-Python: >=3.11",
+        f"Name: {project['name']}",
+        f"Version: {project['version']}",
+        f"Requires-Python: {project['requires-python']}",
         "Provides-Extra: products",
-        "# reprotrail",
-        "https://github.com/j-haacker/reprotrail",
-        "https://j-haacker.github.io/reprotrail/",
+        f"# {project['name']}",
+        *tuple(str(url) for url in project.get("urls", {}).values()),
     )
     absent = [value for value in expected if value not in metadata]
     if absent:
@@ -86,7 +91,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("dist_dir", nargs="?", default="dist")
     args = parser.parse_args()
-    paths = sorted(Path(args.dist_dir).glob("reprotrail-0.1.0*"))
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+    distribution = str(project["name"]).replace("-", "_")
+    paths = sorted(Path(args.dist_dir).glob(f"{distribution}-{project['version']}*"))
     if len(paths) != 2:
         raise SystemExit(f"Expected one wheel and one sdist in {args.dist_dir}, found {len(paths)}")
     for path in paths:
