@@ -9,6 +9,12 @@ form `type/short-topic`, such as `feat/product-sidecars`,
 `fix/provenance-hash`, `docs/contributing-guide`, or
 `chore/update-lockfile`. Commit along the way.
 
+Use an in-repository `./worktree-<topic>` worktree for comprehensive
+implementation tasks. Temporarily add the specific worktree path to
+`.gitignore` without committing that ignore change. Remove such worktrees and
+its ignore entry when you encounter ones that have successfully been merged
+into main.
+
 Keep changes scoped to the request. Avoid unrelated refactors, generated build
 output, and metadata churn that is not needed for the task.
 
