@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-07-16
+
 ### Added
 
 - Start tracking release notes.
@@ -30,3 +32,5 @@
 
 - Add terminal and documentation descriptions for every CLI command and argument, plus a workflow-oriented CLI overview.
 - Document `reprotrail.products.toml`, README template export, RO-Crate sidecars, partial metadata mode, and migration away from `[tool.reprotrail.license]`.
+- Add PyPI and conda-forge release preparation, artifact validation, and maintainer release documentation.
+- Add an end-user quickstart, terminology guide, privacy guidance, and documented `0.x` API stability policy.
