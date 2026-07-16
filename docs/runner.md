@@ -16,6 +16,21 @@ Place each repeatable `--input PATH` before the `--` separator. Arguments after
 the separator belong to the wrapped command, including any child argument also
 named `--input`.
 
+(cli-run)=
+## `reprotrail run` arguments
+
+| Syntax | Status | Behavior |
+| --- | --- | --- |
+| `--log PATH` | Required | Writes the wrapped command's combined standard output and standard error to `PATH`. |
+| `--repo PATH` | Optional; repeatable | Records `PATH` as diagnostic repository state. Supplying this option replaces the repository paths configured in `[tool.reprotrail].repos`; repeat it for multiple repositories. |
+| `--allow-dirty` | Optional | Allows dirty trusted runtime repositories and records their tracked patches instead of stopping before execution. |
+| `--allow-editable` | Optional | Allows external editable or path-based Pixi dependencies when their Git provenance can be recorded. |
+| `--allow-partial-metadata` | Optional | Writes partial product metadata when optional RO-Crate or SPDX tools are unavailable. |
+| `--provenance-json PATH` | Optional | Writes provenance JSON to `PATH`. When omitted, reprotrail infers the path from `--product-output` or the wrapped command's `--output`. |
+| `--product-output PATH` | Optional | Treats `PATH` as the product to describe and finalize. When omitted, reprotrail uses the wrapped command's `--output` value. |
+| `--input PATH` | Optional; repeatable | Snapshots `PATH` before execution as an input. Repeat it for multiple inputs and place every occurrence before the `--` separator. |
+| `COMMAND...` | Required positional | Specifies the command and arguments to run. Prefix the command with `--` to separate it from reprotrail options. |
+
 The runner records:
 
 - command, start/end time, return code, and signal failures
