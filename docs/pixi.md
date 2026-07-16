@@ -1,6 +1,7 @@
 # Pixi
 
-## Git dependency freshness
+(cli-pixi-check-git-freshness)=
+## `reprotrail pixi check-git-freshness` arguments
 
 `reprotrail pixi check-git-freshness` checks whether selected Git-backed Pixi
 dependencies would move if the lockfile were refreshed. It runs Pixi in dry-run
@@ -21,6 +22,13 @@ The command exits with `0` when selected Git sources are fresh, `1` when one or
 more selected Git sources would move, and `2` when the Pixi dry run or
 normalization fails. It does not update `pixi.lock` or install/update the
 environment.
+
+| Syntax | Status | Behavior |
+| --- | --- | --- |
+| `--env ENV` | Required | Checks packages in Pixi environment `ENV`. |
+| `--package NAME` | Required; repeatable | Checks Git-backed package `NAME`; repeat it for every package that should participate in the freshness result. |
+| `--manifest-path PATH` | Optional | Uses `PATH` as the Pixi workspace directory or manifest. The default is the current working directory. |
+| `--json` | Optional | Prints the freshness report as JSON instead of a human-readable summary. |
 
 Use `--manifest-path` to point at a specific workspace directory,
 `pyproject.toml`, or `pixi.toml`. Without it, reprotrail uses the current
