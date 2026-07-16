@@ -58,21 +58,38 @@ Software license evidence is collected locally from manual overrides,
 overrides win, and non-SPDX discovered license strings are preserved as raw
 evidence in the RO-Crate.
 
-Finalize a sidecar:
+(cli-finalize)=
+## `reprotrail finalize` arguments
+
+Finalize an existing product provenance record and its sidecars:
 
 ```bash
 reprotrail finalize --provenance-json results/product.prov.json
 ```
 
+| Syntax | Status | Behavior |
+| --- | --- | --- |
+| `--provenance-json PATH` | Required | Reads and finalizes the product provenance record at `PATH`. |
+| `--no-stamp` | Optional | Skips writing provenance pointer attributes into an existing Zarr or NetCDF product. Sidecars are still finalized. |
+| `--allow-partial-metadata` | Optional | Writes partial product metadata when optional RO-Crate or SPDX tools are unavailable. |
+
 If `rocrate` or `spdx-tools` are unavailable, finalization fails by default.
 Use `--allow-partial-metadata` to write the checksum and README warning while
 skipping RO-Crate/SPDX-derived outputs.
 
-Export the bundled README template for customization:
+(cli-template-readme)=
+## `reprotrail template readme` arguments
+
+Export the bundled README template for project customization:
 
 ```bash
 reprotrail template readme --output docs/product-readme.md.template
 ```
+
+| Syntax | Status | Behavior |
+| --- | --- | --- |
+| `--output PATH` | Required | Writes the bundled product README template to `PATH`. |
+| `--force` | Optional | Overwrites `PATH` when a README template already exists there. |
 
 The template uses Python `string.Template` placeholders such as
 `${files_section}`, `${license_section}`, `${attribution_section}`, and
