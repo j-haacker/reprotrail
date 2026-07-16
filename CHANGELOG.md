@@ -26,4 +26,5 @@
 
 ### Documentation
 
+- Add descriptions for every CLI command and argument at each command-tree help level.
 - Document `reprotrail.products.toml`, README template export, RO-Crate sidecars, partial metadata mode, and migration away from `[tool.reprotrail.license]`.
