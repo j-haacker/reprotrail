@@ -212,6 +212,7 @@ def _run(
     cwd: Path | None = None,
     report: dict[str, Any],
     step: str,
+    check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     item = {"step": step, "command": command, "cwd": str(cwd) if cwd else None}
     report["commands"].append(item)
@@ -229,7 +230,7 @@ def _run(
         item["stdout"] = proc.stdout[-4000:]
     if proc.stderr:
         item["stderr"] = proc.stderr[-4000:]
-    if proc.returncode != 0:
+    if check and proc.returncode != 0:
         raise ReproductionError(f"{step} failed with exit code {proc.returncode}: {shlex.join(command)}")
     return proc
 
@@ -247,8 +248,12 @@ def _clone_or_resume_repo(
     source = _repo_source(state, sources)
     if not source:
         raise ReproductionError(f"Repository {name!r} has no remote_url; provide --repo-source {name}=PATH_OR_URL.")
+    branch = _branch_name(state)
+    commit = state.get("commit")
+    if not commit:
+        fallback = f"branch {branch!r}" if branch else "the source's default branch"
+        report["warnings"].append(f"Repository {name!r} has no recorded commit; falling back to {fallback}.")
     if destination.exists():
-        commit = state.get("commit")
         head = _git_value(destination, ["rev-parse", "HEAD"]) or None
         if reuse_existing and (not commit or head == commit):
             report["adaptations"].append(
@@ -280,23 +285,55 @@ def _clone_or_resume_repo(
             raise ReproductionError(f"Repository destination already exists: {destination}")
     else:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        branch = _branch_name(state)
         clone_command = ["git", "clone"]
-        if branch:
+        if commit:
+            clone_command.append("--no-checkout")
+        elif branch:
             clone_command.extend(["--branch", branch, "--single-branch"])
         clone_command.extend([source, str(destination)])
         _run(clone_command, report=report, step=f"clone {name}")
-    branch = _branch_name(state)
-    if not branch:
+    if commit:
+        if not _repo_contains_commit(destination, str(commit)):
+            _run(
+                ["git", "fetch", "origin", str(commit)],
+                cwd=destination,
+                report=report,
+                step=f"fetch recorded commit for {name}",
+                check=False,
+            )
+        if not _repo_contains_commit(destination, str(commit)):
+            raise ReproductionError(
+                f"Repository {name!r} recorded commit {commit}, "
+                f"but it is unavailable from the repository source {source!r}."
+            )
+        if branch:
+            _run(
+                ["git", "checkout", "--no-track", "-B", branch, str(commit)],
+                cwd=destination,
+                report=report,
+                step=f"checkout {name}",
+            )
+            if _git_value(destination, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]):
+                _run(
+                    ["git", "branch", "--unset-upstream"],
+                    cwd=destination,
+                    report=report,
+                    step=f"unset upstream for {name}",
+                )
+        else:
+            _run(
+                ["git", "checkout", "--detach", str(commit)],
+                cwd=destination,
+                report=report,
+                step=f"checkout {name}",
+            )
+    elif not branch:
         _run(
             ["git", "fetch", "--all", "--tags", "--prune"],
             cwd=destination,
             report=report,
             step=f"fetch {name}",
         )
-    commit = state.get("commit")
-    if commit:
-        _run(["git", "checkout", str(commit)], cwd=destination, report=report, step=f"checkout {name}")
     report["repos"].append(
         {
             "name": name,
