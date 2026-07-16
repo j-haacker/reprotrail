@@ -8,6 +8,7 @@ setting up reproduction workspaces.
 :maxdepth: 1
 
 introduction
+cli
 provenance
 runner
 products
