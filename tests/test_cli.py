@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -22,6 +23,36 @@ def _walk_parsers(parser: argparse.ArgumentParser):
                 pending.extend(action.choices.values())
 
 
+def _walk_leaf_parsers(parser: argparse.ArgumentParser, command_path: tuple[str, ...] = ()):
+    subparsers = [action for action in parser._actions if isinstance(action, argparse._SubParsersAction)]
+    if not subparsers:
+        yield command_path, parser
+        return
+
+    assert len(subparsers) == 1
+    for command, child in subparsers[0].choices.items():
+        yield from _walk_leaf_parsers(child, (*command_path, command))
+
+
+CLI_DOCUMENTATION = {
+    ("run",): ("docs/runner.md", "cli-run"),
+    ("finalize",): ("docs/products.md", "cli-finalize"),
+    ("template", "readme"): ("docs/products.md", "cli-template-readme"),
+    ("reproduce",): ("docs/reproduce.md", "cli-reproduce"),
+    ("epoch", "check"): ("docs/epochs.md", "cli-epoch-check"),
+    ("epoch", "audit"): ("docs/epochs.md", "cli-epoch-audit"),
+    ("pixi", "check-git-freshness"): ("docs/pixi.md", "cli-pixi-check-git-freshness"),
+}
+
+
+def _labeled_section(path: Path, label: str) -> str:
+    marker = f"({label})="
+    text = path.read_text(encoding="utf-8")
+    assert marker in text
+    section = text.split(marker, 1)[1]
+    return section.split("\n(cli-", 1)[0]
+
+
 def test_all_commands_and_arguments_have_help_descriptions():
     parsers = list(_walk_parsers(build_parser()))
 
@@ -41,6 +72,33 @@ def test_all_commands_and_arguments_have_help_descriptions():
     assert all(choice.help and choice.help != argparse.SUPPRESS for choice in command_choices)
     assert len(user_arguments) == 37
     assert all(action.help and action.help != argparse.SUPPRESS for action in user_arguments)
+
+
+def test_every_leaf_command_and_argument_is_documented():
+    root = Path(__file__).parents[1]
+    leaf_parsers = dict(_walk_leaf_parsers(build_parser()))
+
+    assert set(leaf_parsers) == set(CLI_DOCUMENTATION)
+
+    documented_argument_count = 0
+    for command_path, parser in leaf_parsers.items():
+        relative_path, label = CLI_DOCUMENTATION[command_path]
+        section = _labeled_section(root / relative_path, label)
+        assert f"## `reprotrail {' '.join(command_path)}` arguments" in section
+
+        expected_arguments = {
+            action.option_strings[-1] if action.option_strings else str(action.metavar or action.dest)
+            for action in parser._actions
+            if not isinstance(action, argparse._HelpAction)
+        }
+        documented_arguments = {
+            line.split("|")[1].strip().strip("`").split()[0] for line in section.splitlines() if line.startswith("| `")
+        }
+
+        assert documented_arguments == expected_arguments
+        documented_argument_count += len(documented_arguments)
+
+    assert documented_argument_count == 37
 
 
 @pytest.mark.parametrize(
