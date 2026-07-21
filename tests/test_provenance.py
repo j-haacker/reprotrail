@@ -61,13 +61,16 @@ def test_enforce_clean_repos_requires_allow_dirty(tmp_path):
 
 def test_canonical_remote_and_public_git_state_omit_local_root(tmp_path):
     repo = _repo(tmp_path)
-    _run(["git", "remote", "add", "origin", "github:j-haacker/reprotrail"], repo)
+    _run(["git", "remote", "add", "origin", "github:example-org/example-project"], repo)
 
     state = public_git_state(get_git_state(repo))
 
-    assert state["remote_url"] == "https://github.com/j-haacker/reprotrail"
-    assert canonicalize_remote_url("ssh://github/j-haacker/reprotrail.git") == "https://github.com/j-haacker/reprotrail"
-    assert state["name"] == "reprotrail"
+    assert state["remote_url"] == "https://github.com/example-org/example-project"
+    assert (
+        canonicalize_remote_url("ssh://github/example-org/example-project.git")
+        == "https://github.com/example-org/example-project"
+    )
+    assert state["name"] == "example-project"
     assert "repo_root" not in state
 
 

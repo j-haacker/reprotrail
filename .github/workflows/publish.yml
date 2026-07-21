@@ -1,0 +1,82 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Verify and build distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Check release metadata
+        run: |
+          uv run python scripts/check_release.py
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            uv run python scripts/check_release.py --tag "${GITHUB_REF_NAME}"
+          fi
+
+      - name: Test
+        run: uv run --extra dev --extra products pytest
+
+      - name: Lint
+        run: uv run --extra dev ruff check .
+
+      - name: Build documentation
+        run: uv run --extra dev sphinx-build -W -b html docs docs/_build/html
+
+      - name: Scan publication surface
+        run: uv run python scripts/check_privacy.py
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Validate distributions
+        run: |
+          uv run --with twine twine check dist/*
+          uv run python scripts/check_dist.py dist
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/reprotrail
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1

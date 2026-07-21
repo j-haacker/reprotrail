@@ -12,3 +12,4 @@ build/
 *.egg-info/
 .pixi/
 TODO
+.privacy-filters.local.toml
