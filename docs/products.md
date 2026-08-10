@@ -175,4 +175,5 @@ license selection into `reprotrail.products.toml`.
 
 When optional product dependencies are installed, Zarr and NetCDF outputs also
 receive lightweight pointer attributes for the provenance file, checksum, and
-schema version.
+schema version. NetCDF attributes are updated in place; product arrays,
+encodings, and the file identity are not rewritten.

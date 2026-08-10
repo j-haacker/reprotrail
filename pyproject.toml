@@ -28,6 +28,7 @@ Source = "https://github.com/j-haacker/reprotrail"
 
 [project.optional-dependencies]
 products = [
+    "netCDF4",
     "rocrate",
     "spdx-tools",
     "xarray",
@@ -88,7 +89,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 [tool.pixi.pypi-dependencies]
-reprotrail = { path = ".", editable = true }
+reprotrail = { path = ".", editable = true, extras = ["products"] }
 
 [tool.pixi.dependencies]
 python = ">=3.11"

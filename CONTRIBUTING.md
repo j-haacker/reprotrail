@@ -22,7 +22,7 @@ uv run --extra dev pre-commit install --hook-type pre-commit --hook-type pre-pus
 Run the checks that match your change before submitting it:
 
 ```bash
-uv run --extra dev pytest
+uv run --extra dev --extra products pytest
 uv run --extra dev ruff check .
 uv run --extra dev sphinx-build -W -b html docs docs/_build/html
 ```

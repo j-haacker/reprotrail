@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 from datetime import datetime, timezone
 
@@ -15,6 +16,8 @@ from reprotrail.provenance import (
     get_git_state,
     get_input_path_state,
     public_git_state,
+    public_input_path_state,
+    summarize_directory,
 )
 
 
@@ -139,3 +142,87 @@ def test_product_provenance_sidecar_is_detected(tmp_path):
         "path": "effective-config.prov.json",
         "sha256": digest,
     }
+
+
+def test_small_file_input_records_content_identity(tmp_path):
+    source = tmp_path / "script.py"
+    source.write_bytes(b"abc")
+
+    state = get_input_path_state(source, max_file_hash_bytes=3)
+    public = public_input_path_state(state)
+
+    assert public["metadata"]["file"]["size_bytes"] == 3
+    assert public["metadata"]["file"]["sha256"] == hashlib.sha256(b"abc").hexdigest()
+    assert public["metadata"]["file"]["hash_kind"] == "sha256"
+
+
+def test_large_file_input_skips_content_hash_at_declared_budget(tmp_path):
+    source = tmp_path / "large.nc"
+    source.write_bytes(b"abcd")
+
+    state = get_input_path_state(source, max_file_hash_bytes=3)
+    public = public_input_path_state(state)
+
+    assert public["metadata"]["file"]["size_bytes"] == 4
+    assert "sha256" not in public["metadata"]["file"]
+    assert public["metadata"]["file"]["hash_skipped"] == {
+        "reason": "size-limit",
+        "max_bytes": 3,
+    }
+
+
+def test_directory_summary_stops_after_the_declared_entry_budget(tmp_path, monkeypatch):
+    for name in ("a", "b", "c", "d", "e"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+    real_scandir = os.scandir
+    entries_yielded = []
+
+    class CountingScandir:
+        def __init__(self, path):
+            self._iterator = real_scandir(path)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self._iterator.close()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            entry = next(self._iterator)
+            entries_yielded.append(entry.name)
+            return entry
+
+    monkeypatch.setattr("reprotrail.provenance.os.scandir", CountingScandir)
+
+    summary = summarize_directory(tmp_path, max_entries=2)
+
+    assert len(entries_yielded) == 3
+    assert summary["manifest_truncated"] is True
+    assert summary["max_entries"] == 2
+    assert summary["entries_scanned"] == 3
+    assert summary["manifest_entries"] == 2
+    assert summary["manifest_hash_kind"] == "bounded-first-entries-paths-size-mtime-ns-v1"
+    assert summary["file_count_at_least"] == 3
+    assert summary["total_bytes_at_least"] == 3
+    assert "file_count" not in summary
+    assert "total_bytes" not in summary
+
+
+def test_complete_directory_summary_preserves_global_path_hash(tmp_path):
+    nested = tmp_path / "a"
+    nested.mkdir()
+    first = nested / "z"
+    second = tmp_path / "b"
+    first.write_text("x", encoding="utf-8")
+    second.write_text("y", encoding="utf-8")
+    for path in (first, second):
+        os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+
+    summary = summarize_directory(tmp_path, max_entries=10)
+
+    assert summary["manifest_truncated"] is False
+    assert summary["manifest_hash_kind"] == "paths-size-mtime-ns"
+    assert summary["manifest_hash"] == "fc0fcedf7a42aae60e88352e57ae1a78f7ccc500341fdee76adfdd7cefe6c760"

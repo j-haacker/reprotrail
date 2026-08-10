@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ._json import to_jsonable
+from ._paths import sha256_file
 
 Backend = Literal["git-lfs", "dvc", "git", "filesystem", "unknown"]
+DEFAULT_FILE_HASH_MAX_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -347,40 +349,119 @@ def _product_provenance_metadata(path: Path) -> dict[str, Any] | None:
     return metadata
 
 
+def _directory_entries(root: Path) -> Iterable[os.DirEntry[str]]:
+    """Yield directory entries lazily without following directory symlinks."""
+
+    try:
+        with os.scandir(root) as entries:
+            for entry in entries:
+                yield entry
+                try:
+                    is_directory = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_directory = False
+                if is_directory:
+                    yield from _directory_entries(Path(entry.path))
+    except OSError:
+        return
+
+
 def summarize_directory(path: Path | str, *, max_entries: int = 20_000) -> dict[str, Any]:
-    """Summarize a directory without embedding a full file listing."""
+    """Summarize a directory without embedding or scanning a full file listing."""
+
+    if max_entries < 0:
+        raise ValueError("max_entries must be non-negative")
 
     root = Path(path)
+    entries_scanned = 0
     file_count = 0
     total_bytes = 0
-    digest = hashlib.sha256()
     truncated = False
-    for child in sorted(
-        (item for item in root.rglob("*") if item.is_file()),
-        key=lambda p: p.as_posix(),
-    ):
-        file_count += 1
-        try:
-            stat = child.stat()
-        except OSError:
-            continue
-        total_bytes += stat.st_size
-        if file_count <= max_entries:
-            rel = child.relative_to(root).as_posix()
-            digest.update(f"{rel}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode())
-        else:
-            truncated = True
-    return {
-        "file_count": file_count,
-        "total_bytes": total_bytes,
+    manifest: list[tuple[str, int, int]] = []
+    iterator = iter(_directory_entries(root))
+    try:
+        for entry in iterator:
+            entries_scanned += 1
+            try:
+                if entry.is_file():
+                    stat = entry.stat()
+                    file_count += 1
+                    total_bytes += stat.st_size
+                    if entries_scanned <= max_entries:
+                        rel = Path(entry.path).relative_to(root).as_posix()
+                        manifest.append((rel, stat.st_size, stat.st_mtime_ns))
+            except OSError:
+                pass
+            if entries_scanned > max_entries:
+                truncated = True
+                break
+    finally:
+        close = getattr(iterator, "close", None)
+        if close is not None:
+            close()
+
+    digest = hashlib.sha256()
+    for rel, size, mtime_ns in sorted(manifest):
+        digest.update(f"{rel}\0{size}\0{mtime_ns}\n".encode())
+    summary = {
         "manifest_hash": digest.hexdigest(),
-        "manifest_hash_kind": "paths-size-mtime-ns",
+        "manifest_hash_kind": (
+            "bounded-first-entries-paths-size-mtime-ns-v1"
+            if truncated
+            else "paths-size-mtime-ns"
+        ),
         "manifest_truncated": truncated,
         "max_entries": max_entries,
+        "entries_scanned": entries_scanned,
+        "manifest_entries": len(manifest),
     }
+    if truncated:
+        summary.update(
+            {
+                "file_count_at_least": file_count,
+                "total_bytes_at_least": total_bytes,
+            }
+        )
+    else:
+        summary.update({"file_count": file_count, "total_bytes": total_bytes})
+    return summary
 
 
-def get_input_path_state(path: Path | str) -> InputPathState:
+def summarize_file(
+    path: Path | str,
+    *,
+    max_hash_bytes: int = DEFAULT_FILE_HASH_MAX_BYTES,
+) -> dict[str, Any]:
+    """Record cheap file identity and hash content only within a byte budget."""
+
+    if max_hash_bytes < 0:
+        raise ValueError("max_hash_bytes must be non-negative")
+    target = Path(path)
+    before = target.stat()
+    summary: dict[str, Any] = {
+        "size_bytes": before.st_size,
+        "mtime_ns": before.st_mtime_ns,
+    }
+    if before.st_size > max_hash_bytes:
+        summary["hash_skipped"] = {
+            "reason": "size-limit",
+            "max_bytes": max_hash_bytes,
+        }
+        return summary
+    digest = sha256_file(target)
+    after = target.stat()
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        summary["hash_skipped"] = {"reason": "changed-during-hash"}
+        return summary
+    summary.update({"sha256": digest, "hash_kind": "sha256"})
+    return summary
+
+
+def get_input_path_state(
+    path: Path | str,
+    *,
+    max_file_hash_bytes: int = DEFAULT_FILE_HASH_MAX_BYTES,
+) -> InputPathState:
     """Inspect one input path and classify its provenance backend."""
 
     target = Path(path).expanduser().resolve()
@@ -401,6 +482,14 @@ def get_input_path_state(path: Path | str) -> InputPathState:
                 error = str(err)
     if kind == "directory":
         metadata["directory"] = summarize_directory(target)
+    elif kind == "file":
+        try:
+            metadata["file"] = summarize_file(
+                target,
+                max_hash_bytes=max_file_hash_bytes,
+            )
+        except OSError as err:
+            error = str(err)
     dvc = _dvc_metadata(target, repo_root, rel)
     lfs = _lfs_metadata(target, repo_root, rel)
     metadata.update({"lfs": lfs, "dvc": dvc})
@@ -430,10 +519,17 @@ def get_input_path_state(path: Path | str) -> InputPathState:
     )
 
 
-def get_input_path_states(paths: Iterable[Path | str]) -> list[InputPathState]:
+def get_input_path_states(
+    paths: Iterable[Path | str],
+    *,
+    max_file_hash_bytes: int = DEFAULT_FILE_HASH_MAX_BYTES,
+) -> list[InputPathState]:
     """Inspect multiple input paths, preserving input order."""
 
-    return [get_input_path_state(path) for path in paths]
+    return [
+        get_input_path_state(path, max_file_hash_bytes=max_file_hash_bytes)
+        for path in paths
+    ]
 
 
 def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[str, Any]:
@@ -442,7 +538,7 @@ def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[s
     data = to_jsonable(state)
     metadata = data.get("metadata", {})
     public_metadata: dict[str, Any] = {}
-    for key in ("directory", "selection", "product_provenance"):
+    for key in ("file", "directory", "selection", "product_provenance"):
         if metadata.get(key):
             public_metadata[key] = metadata[key]
     lfs = metadata.get("lfs") or {}

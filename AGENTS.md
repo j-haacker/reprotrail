@@ -35,7 +35,7 @@ or refactors with no behavior change.
 Use the `uv` workflow from `CONTRIBUTING.md` for local verification:
 
 ```bash
-uv run --extra dev pytest
+uv run --extra dev --extra products pytest
 uv run --extra dev ruff check .
 uv run --extra dev sphinx-build -W -b html docs docs/_build/html
 ```
