@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- Limit Git LFS pointer detection to a 512-byte prefix instead of reading an
+  entire large scientific input before a run.
+- Bound directory provenance inspection after the configured manifest-entry
+  budget, reporting lower-bound counts for truncated Zarr and directory inputs.
+- Stamp NetCDF provenance attributes in place without loading, replacing, or
+  re-encoding large scientific products.
+- Record size and modification time for ordinary file inputs, plus SHA-256 for
+  files within a bounded 16 MiB hashing budget.
+
 ## 0.1.0 - 2026-07-16
 
 ### Added

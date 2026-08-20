@@ -344,23 +344,42 @@ def stamp_dataset_provenance(obj: Any, provenance: dict[str, Any] | None) -> Any
     return out
 
 
+def _pointer_attrs(
+    data_path: Path,
+    record: dict[str, Any],
+    digest: str,
+    *,
+    current_history: Any,
+) -> dict[str, Any]:
+    product = record.get("product") or {}
+    history = record.get("history_entry")
+    return {
+        "history": current_history if history is None else history,
+        PROVENANCE_FILE_ATTR: product.get(
+            "provenance_file",
+            product_sidecars(data_path).provenance.name,
+        ),
+        PROVENANCE_SHA256_ATTR: digest,
+        PROVENANCE_SCHEMA_ATTR: record.get("schema_version", "1"),
+    }
+
+
 def _stamp_zarr_pointer_attrs(data_path: Path, record: dict[str, Any], digest: str) -> None:
     try:
         import zarr
     except ImportError as err:  # pragma: no cover - optional dependency
         raise RuntimeError("Install reprotrail[products] to stamp Zarr outputs.") from err
 
-    product = record.get("product") or {}
     group = zarr.open_group(str(data_path), mode="a")
     attrs = dict(group.attrs)
     attrs.pop(PROVENANCE_ATTR, None)
     attrs.update(
-        {
-            "history": record.get("history_entry", attrs.get("history", "")),
-            PROVENANCE_FILE_ATTR: product.get("provenance_file", product_sidecars(data_path).provenance.name),
-            PROVENANCE_SHA256_ATTR: digest,
-            PROVENANCE_SCHEMA_ATTR: record.get("schema_version", "1"),
-        }
+        _pointer_attrs(
+            data_path,
+            record,
+            digest,
+            current_history=attrs.get("history", ""),
+        )
     )
     group.attrs.clear()
     group.attrs.update(attrs)
@@ -368,29 +387,25 @@ def _stamp_zarr_pointer_attrs(data_path: Path, record: dict[str, Any], digest: s
 
 def _stamp_netcdf_pointer_attrs(data_path: Path, record: dict[str, Any], digest: str) -> None:
     try:
-        import xarray as xr
+        import netCDF4
     except ImportError as err:  # pragma: no cover - optional dependency
         raise RuntimeError("Install reprotrail[products] to stamp NetCDF outputs.") from err
 
-    product = record.get("product") or {}
-    with xr.open_dataset(data_path) as source:
-        ds = source.load()
-    ds.attrs.pop(PROVENANCE_ATTR, None)
-    ds.attrs.update(
-        {
-            "history": record.get("history_entry", ds.attrs.get("history", "")),
-            PROVENANCE_FILE_ATTR: product.get("provenance_file", product_sidecars(data_path).provenance.name),
-            PROVENANCE_SHA256_ATTR: digest,
-            PROVENANCE_SCHEMA_ATTR: record.get("schema_version", "1"),
-        }
-    )
-    tmp_path = data_path.with_name(f".{data_path.name}.tmp")
-    try:
-        ds.to_netcdf(tmp_path)
-        tmp_path.replace(data_path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
+    with netCDF4.Dataset(data_path, mode="r+") as dataset:
+        if PROVENANCE_ATTR in dataset.ncattrs():
+            dataset.delncattr(PROVENANCE_ATTR)
+        dataset.setncatts(
+            _pointer_attrs(
+                data_path,
+                record,
+                digest,
+                current_history=(
+                    dataset.getncattr("history")
+                    if "history" in dataset.ncattrs()
+                    else ""
+                ),
+            )
+        )
 
 
 def finalize_product_provenance(

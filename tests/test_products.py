@@ -214,3 +214,70 @@ license = "MIT"
     assert records[0]["license"] == "MIT"
     assert records[0]["license_source"] == "manual"
     assert records[0]["overrides_discovered_license"] is True
+
+
+def test_finalize_stamps_netcdf_without_replacing_or_reencoding_it(
+    tmp_path,
+    monkeypatch,
+):
+    import netCDF4
+    import numpy as np
+
+    monkeypatch.setattr("reprotrail.product_metadata.pixi_package_license_records", lambda *_args: [])
+    data = tmp_path / "product" / "packed.nc"
+    data.parent.mkdir(parents=True)
+    with netCDF4.Dataset(data, "w") as dataset:
+        dataset.createDimension("time", None)
+        dataset.createDimension("y", 1)
+        dataset.createDimension("x", 1)
+        variable = dataset.createVariable(
+            "tas",
+            "i2",
+            ("time", "y", "x"),
+            fill_value=-9999,
+            zlib=True,
+            complevel=1,
+            chunksizes=(1, 1, 1),
+        )
+        variable.scale_factor = 0.1
+        variable[:] = np.asarray([[[12]]], dtype=np.int16)
+    provenance_path = data.parent / "packed.prov.json"
+    provenance_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "status": "completed",
+                "history_entry": "2026-01-01T00:00:00+00:00; command",
+                "product": product_record(data, provenance_path=provenance_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    inode_before = data.stat().st_ino
+    with netCDF4.Dataset(data) as dataset:
+        variable = dataset.variables["tas"]
+        variable.set_auto_maskandscale(False)
+        raw_before = variable[:].copy()
+        encoding_before = (
+            variable.dtype,
+            variable.chunking(),
+            variable.filters(),
+            variable.getncattr("scale_factor"),
+            variable.getncattr("_FillValue"),
+        )
+
+    finalize_product_provenance(provenance_path, project_root=tmp_path)
+
+    assert data.stat().st_ino == inode_before
+    with netCDF4.Dataset(data) as dataset:
+        variable = dataset.variables["tas"]
+        variable.set_auto_maskandscale(False)
+        np.testing.assert_array_equal(variable[:], raw_before)
+        assert (
+            variable.dtype,
+            variable.chunking(),
+            variable.filters(),
+            variable.getncattr("scale_factor"),
+            variable.getncattr("_FillValue"),
+        ) == encoding_before
+        assert dataset.getncattr("provenance_file") == "packed.prov.json"

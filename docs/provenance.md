@@ -5,6 +5,20 @@ It captures Git commit, branch, canonical remote URL, dirty status, optional
 dirty diff hash, and compact path state for filesystem, Git, Git LFS, and DVC
 inputs.
 
+Directory summaries consume at most 20,001 filesystem entries by default:
+20,000 entries may contribute files to the manifest and one additional entry
+establishes truncation. Complete summaries retain the globally sorted legacy
+hash. Truncated summaries use a versioned partial-hash kind and report lower
+bounds rather than misleading exact file and byte counts. This keeps large
+Zarr inputs and other directory products bounded.
+
+Ordinary files always record byte size and nanosecond modification time. Files
+up to 16 MiB additionally receive a SHA-256 content identity, which covers
+scripts, configurations, and typical manifests without reading multi-gigabyte
+scientific inputs merely to start a run. Git LFS detection reads only the first
+512 bytes. Larger files explicitly record that the content hash was skipped at
+the size limit.
+
 When an input has a conventional sibling product sidecar such as
 `effective-config.prov.json` and its `.sha256` file, input inspection records
 the sidecar name and checksum as `product_provenance` metadata. Reproduction
