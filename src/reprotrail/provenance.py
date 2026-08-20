@@ -257,7 +257,9 @@ def _lfs_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
     metadata: dict[str, Any] = {"is_pointer_file": False, "tracked_by_lfs": False}
     if path.is_file():
         try:
-            pointer = _parse_lfs_pointer(path.read_text(encoding="utf-8", errors="replace")[:512])
+            with path.open("rb") as stream:
+                prefix = stream.read(512).decode("utf-8", errors="replace")
+            pointer = _parse_lfs_pointer(prefix)
         except OSError as err:
             pointer = None
             metadata["pointer_error"] = str(err)

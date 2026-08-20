@@ -4,6 +4,7 @@ import hashlib
 import os
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -169,6 +170,46 @@ def test_large_file_input_skips_content_hash_at_declared_budget(tmp_path):
         "reason": "size-limit",
         "max_bytes": 3,
     }
+
+
+def test_large_file_inspection_bounds_git_lfs_prefix_read(tmp_path, monkeypatch):
+    source = tmp_path / "large.nc"
+    source.write_bytes(b"not a Git LFS pointer")
+    resolved_source = source.resolve()
+    real_open = Path.open
+    read_sizes = []
+
+    class BoundedReader:
+        def __init__(self, handle):
+            self._handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self._handle.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._handle, name)
+
+        def read(self, size=-1):
+            read_sizes.append(size)
+            if size < 0 or size > 512:
+                raise AssertionError("Git LFS inspection exceeded its prefix budget")
+            return self._handle.read(size)
+
+    def bounded_open(path, *args, **kwargs):
+        handle = real_open(path, *args, **kwargs)
+        if path.resolve() == resolved_source:
+            return BoundedReader(handle)
+        return handle
+
+    monkeypatch.setattr(Path, "open", bounded_open)
+
+    state = get_input_path_state(source, max_file_hash_bytes=0)
+
+    assert state.backend == "filesystem"
+    assert read_sizes == [512]
 
 
 def test_directory_summary_stops_after_the_declared_entry_budget(tmp_path, monkeypatch):

@@ -15,8 +15,9 @@ Zarr inputs and other directory products bounded.
 Ordinary files always record byte size and nanosecond modification time. Files
 up to 16 MiB additionally receive a SHA-256 content identity, which covers
 scripts, configurations, and typical manifests without reading multi-gigabyte
-scientific inputs merely to start a run. Larger files explicitly record that
-the hash was skipped at the size limit.
+scientific inputs merely to start a run. Git LFS detection reads only the first
+512 bytes. Larger files explicitly record that the content hash was skipped at
+the size limit.
 
 When an input has a conventional sibling product sidecar such as
 `effective-config.prov.json` and its `.sha256` file, input inspection records
