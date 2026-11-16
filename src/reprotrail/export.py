@@ -10,6 +10,7 @@ import tempfile
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from ._json import read_json, write_json
 from ._paths import sha256_file
@@ -266,6 +267,7 @@ def export_products(
     *,
     provenances: list[str | Path],
     output: str | Path,
+    product_base: str | Path | None = None,
     input_roots: dict[str, str] | None = None,
     repo_sources: dict[str, str] | None = None,
     archive_repos: bool = False,
@@ -279,12 +281,51 @@ def export_products(
     graph = discover_products(provenances, input_roots=input_roots)
     graph["archive_repos"] = archive_repos
     graph["dry_run"] = dry_run
+    base = Path(product_base).resolve() if product_base is not None else None
+    relocations: dict[str, str] = {}
+    for node in graph["products"].values():
+        if not node["selected"]:
+            continue
+        provenance = Path(node["provenance"])
+        if base is not None:
+            try:
+                relative = provenance.parent.relative_to(base)
+            except ValueError as exc:
+                raise ExportError(
+                    f"Selected product package {provenance.parent} is outside --product-base {base}"
+                ) from exc
+        else:
+            relative = Path(graph["files"][str(provenance)]["path"]).parent.relative_to("metadata")
+        package = Path("products") / relative
+        product = read_json(provenance).get("product") or {}
+        sidecars = [provenance, provenance.with_name(provenance.name + ".sha256")]
+        sidecars.extend(
+            provenance.parent / product.get(key, default)
+            for key, default in [
+                ("readme_file", "README.md"),
+                ("license_file", "LICENSE.md"),
+                ("ro_crate_file", "ro-crate-metadata.json"),
+            ]
+        )
+        for sidecar in sidecars:
+            original = str(sidecar.resolve())
+            if original in graph["files"]:
+                target = str(package / sidecar.name)
+                if original in relocations and relocations[original] != target:
+                    raise ExportError(f"Shared sidecar has conflicting destinations: {sidecar}")
+                relocations[original] = target
+        node["data_path"] = str(package / Path(node["data"]).name)
+    destinations: dict[str, str] = {}
+    for original, ref in graph["files"].items():
+        ref["path"] = relocations.get(original, ref["path"])
+        if ref["path"] in destinations:
+            raise ExportError(f"Metadata destination collision: {ref['path']}")
+        destinations[ref["path"]] = original
     for node in graph["products"].values():
         if node["selected"]:
-            parent = Path(graph["files"][node["provenance"]]["path"]).parent
-            node["data_path"] = str(parent / Path(node["data"]).name)
-            if node["data_path"] in {f["path"] for f in graph["files"].values()}:
+            if node["data_path"] in destinations:
                 raise ExportError(f"Data/metadata destination collision: {node['data_path']}")
+            destinations[node["data_path"]] = node["data"]
     if strict and graph["gaps"]:
         raise ExportError(f"Export has {len(graph['gaps'])} metadata gaps; inspect without --strict.")
     graph["status"] = "incomplete" if graph["gaps"] else "completed"
@@ -309,14 +350,40 @@ def export_products(
                 raise ExportError(f"Export has {len(graph['gaps'])} metadata gaps.")
             graph["status"] = "incomplete" if graph["gaps"] else "completed"
             write_json(destination / "manifest.json", graph)
-            (destination / "README.md").write_text(
-                "# Reprotrail export\n\nSelected data are symlinks; upstream data are excluded. "
-                "Keep sources available during transfer. Pull with:\n\n"
-                "```bash\nrsync -aL --partial host:/absolute/export-directory/ ./export-directory/\n```\n\n"
-                "See manifest.json for dependencies, external inputs and metadata gaps. "
-                "Original datasets and dependency package downloads remain external.\n",
-                encoding="utf-8",
+            readme = [
+                "# Reprotrail export",
+                "",
+                "## Selected products",
+                "",
+                "| Dataset | Provenance |",
+                "| --- | --- |",
+            ]
+            for node in graph["products"].values():
+                if node["selected"]:
+                    data = quote(node["data_path"], safe="/")
+                    provenance = quote(graph["files"][node["provenance"]]["path"], safe="/")
+                    label = node["data_path"].replace("|", "\\|").replace("[", "\\[").replace("]", "\\]")
+                    readme.append(f"| [{label}]({data}) | [Provenance]({provenance}) |")
+            readme.extend(
+                [
+                    "",
+                    "Selected data and their sidecars are under `products/`. "
+                    "Upstream reproduction metadata is under `metadata/`; "
+                    "optional Git archives are under `repositories/`.",
+                    "",
+                    "Selected data are symlinks; upstream data are excluded. "
+                    "Keep sources available during transfer. Pull with:",
+                    "",
+                    "```bash",
+                    "rsync -aL --partial host:/absolute/export-directory/ ./export-directory/",
+                    "```",
+                    "",
+                    "See manifest.json for dependencies, external inputs and metadata gaps. "
+                    "Original datasets and dependency package downloads remain external.",
+                    "",
+                ]
             )
+            (destination / "README.md").write_text("\n".join(readme), encoding="utf-8")
         except BaseException:
             shutil.rmtree(destination)
             raise

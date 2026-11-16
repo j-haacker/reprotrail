@@ -131,8 +131,11 @@ def test_export_symlinks_only_selected_and_preserves_metadata(chain, tmp_path):
         archived = output / report["files"][node["provenance"]]["path"]
         assert archived.read_bytes() == Path(node["provenance"]).read_bytes()
         if node["selected"]:
+            assert node["data_path"].startswith("products/")
+            assert archived.parent == (output / node["data_path"]).parent
             assert (output / node["data_path"]).is_symlink()
         else:
+            assert report["files"][node["provenance"]]["path"].startswith("metadata/")
             assert not (archived.parent / Path(node["data"]).name).exists()
     assert all(p.read_bytes() == original[name] for name, (_, p) in nodes.items())
     assert "rsync -aL" in (output / "README.md").read_text()
@@ -209,9 +212,31 @@ def test_archive_multiple_and_unreferenced_commits(chain, tmp_path):
     assert git(restored, "cat-file", "-t", extra) == "commit"
 
 
-def test_replay_relocated_export_in_dependency_order(chain, tmp_path, monkeypatch):
+@pytest.mark.parametrize("layout", ["default", "short", "legacy"])
+def test_replay_relocated_export_in_dependency_order(chain, tmp_path, monkeypatch, layout):
     root, repo, nodes, raw, _ = chain
-    output, graph = export_chain(chain, tmp_path, archive_repos=True)
+    output, graph = export_chain(
+        chain,
+        tmp_path,
+        archive_repos=True,
+        input_roots={"data": str(root)},
+        product_base=root if layout == "short" else None,
+    )
+    if layout == "legacy":
+        # Recreate schema-1 packages whose selected payloads lived under metadata/.
+        for ref in graph["files"].values():
+            if ref["path"].startswith("products/"):
+                legacy_path = "metadata/" + ref["path"].removeprefix("products/")
+                target = output / legacy_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                (output / ref["path"]).rename(target)
+                ref["path"] = legacy_path
+        for node in graph["products"].values():
+            if node["selected"]:
+                legacy_path = "metadata/" + node["data_path"].removeprefix("products/")
+                (output / node["data_path"]).rename(output / legacy_path)
+                node["data_path"] = legacy_path
+        write_json(output / "manifest.json", graph)
     moved = tmp_path / "moved"
     # Mirrors rsync -aL: selected symlink payload becomes real data at destination.
     shutil.copytree(output, moved, symlinks=False)
@@ -576,3 +601,75 @@ def test_force_refuses_workspace_containing_external_inputs(chain, tmp_path):
     with pytest.raises(ReproductionError, match="encloses source"):
         reproduce_from_provenance(provenance=path, workspace=work, recursive=True, force=True)
     assert source.read_text() == "input"
+
+
+def test_product_base_shortens_selected_packages_and_keeps_sidecars_adjacent(chain, tmp_path):
+    root, _, nodes, _, _ = chain
+    package = nodes["c"][1].parent
+    for name in ("README.md", "LICENSE.md", "ro-crate-metadata.json"):
+        (package / name).write_text(name)
+    original = {p.name: p.read_bytes() for p in package.iterdir() if p.is_file()}
+    output = tmp_path / "export"
+    arguments = dict(provenances=[nodes["a"][1], nodes["c"][1]], output=output, product_base=root)
+    planned = export_products(**arguments, dry_run=True)
+    assert not output.exists()
+    actual = export_products(**arguments)
+    assert actual["schema_version"] == "1"
+    assert actual["files"] == planned["files"]
+    assert actual["products"] == planned["products"]
+    for name in ("a", "c"):
+        assert (output / f"products/{name}/{name}.txt").is_symlink()
+        assert (output / f"products/{name}/{name}.prov.json").is_file()
+        assert (output / f"products/{name}/{name}.prov.json.sha256").is_file()
+    for name, content in original.items():
+        assert (output / "products/c" / name).read_bytes() == content
+    selected_sources = {node["provenance"] for node in actual["products"].values() if node["selected"]}
+    assert all(actual["files"][source]["path"].startswith("products/") for source in selected_sources)
+    assert not (output / "products/b").exists()
+    readme = (output / "README.md").read_text()
+    assert "[products/c/c.txt](products/c/c.txt)" in readme
+    assert "[Provenance](products/c/c.prov.json)" in readme
+    assert "metadata/" in readme
+
+
+def test_default_product_layout_preserves_repository_relative_paths(chain, tmp_path):
+    root, _, nodes, _, _ = chain
+    output, report = export_chain(chain, tmp_path, input_roots={"data": str(root)})
+    assert (output / "products/data/c/c.txt").is_symlink()
+    assert (output / "products/data/c/c.prov.json").is_file()
+    for node in report["products"].values():
+        if not node["selected"]:
+            assert report["files"][node["provenance"]]["path"].startswith("metadata/data/")
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_product_base_rejects_packages_outside_base_before_writing(chain, tmp_path, dry_run):
+    root, _, nodes, _, _ = chain
+    output = tmp_path / "export"
+    with pytest.raises(ExportError, match="outside --product-base"):
+        export_products(
+            provenances=[nodes["a"][1], nodes["c"][1]], output=output, product_base=root / "c", dry_run=dry_run
+        )
+    assert not output.exists()
+
+
+def test_short_export_reuses_selected_ancestor_after_transfer(chain, tmp_path, monkeypatch):
+    root, _, nodes, _, _ = chain
+    source = tmp_path / "export"
+    graph = export_products(provenances=[nodes["a"][1], nodes["c"][1]], output=source, product_base=root)
+    transferred = tmp_path / "transferred"
+    shutil.copytree(source, transferred, symlinks=False)
+    root.rename(tmp_path / "unavailable-inputs")
+    calls = fake_pixi(monkeypatch)
+    target = next(node for node in graph["products"].values() if node["provenance"] == str(nodes["c"][1]))
+    report = reproduce_from_provenance(
+        provenance=transferred / graph["files"][target["provenance"]]["path"],
+        bundle=transferred,
+        workspace=tmp_path / "replay",
+        execute=True,
+        install=False,
+    )
+    assert report["status"] == "completed", report
+    assert [step["status"] for step in report["steps"]] == ["reused", "completed", "completed"]
+    assert len(calls) == 2
+    assert Path(report["steps"][-1]["output"]).read_text() == "aa!!"

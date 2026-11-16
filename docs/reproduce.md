@@ -63,7 +63,9 @@ remote URL.
 Use `--recursive` to regenerate missing ancestors before the target. Add
 `--bundle` to use a transferred export; specifying it implies recursive mode.
 The target can be any provenance record in the export, including an intermediate
-whose data were excluded. Continuing the fictional survey example from
+whose data were excluded. The manifest supplies the paths, so both the current
+`products/` layout and older exports with datasets under `metadata/` are supported.
+Continuing the fictional survey example from
 [the export guide](export.md), reproduce a cleaned intermediate dataset:
 
 ```bash

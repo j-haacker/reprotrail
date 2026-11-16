@@ -88,6 +88,7 @@ def _cmd_export(args: argparse.Namespace) -> None:
         report = export_products(
             provenances=args.provenance,
             output=args.output,
+            product_base=args.product_base,
             input_roots=parse_key_value(args.input_root),
             repo_sources=parse_key_value(args.repo_source),
             archive_repos=args.archive_repos,
@@ -388,6 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Select a product provenance record; repeat for multiple products.",
     )
     export.add_argument("--output", required=True, metavar="PATH", help="Create a new export directory at PATH.")
+    export.add_argument(
+        "--product-base",
+        metavar="PATH",
+        help="Place selected product packages under products/ relative to source directory PATH.",
+    )
     export.add_argument(
         "--input-root",
         action="append",

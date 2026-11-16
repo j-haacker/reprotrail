@@ -14,8 +14,33 @@ reprotrail export \
   --provenance /data/survey-data/results/south/summary/summary.prov.json \
   --input-root survey-data=/data/survey-data \
   --input-root survey-tools=/code/survey-tools \
+  --product-base /data/survey-data/results \
   --output /scratch/survey-export
 ```
+
+The selected packages are easy to find under `products/`:
+
+```text
+survey-export/
+  products/
+    north/summary/             # Selected dataset and its package sidecars
+    south/summary/
+  metadata/                    # Upstream reproduction artifacts
+  repositories/                # Present only with --archive-repos
+  manifest.json
+  README.md                    # Links to selected datasets and provenance
+```
+
+`--product-base` names a source directory, not a destination. Selected packages
+are placed relative to that directory; every selected provenance package must
+lie beneath it. Without this option, `products/` preserves repository-relative
+paths, such as `products/survey-data/results/north/summary/`. Packages without a
+known repository root retain digest-based paths under `products/artifacts/`.
+Only the selected packages move into `products/`; intermediate products remain
+metadata-only. The manifest records all actual locations.
+
+Existing exports using the older `metadata/` layout remain readable and are not
+rearranged. Create a new export to use the new layout.
 
 Run this command on the source SSH host. Pull from the receiving host using:
 
@@ -31,10 +56,11 @@ Reprotrail does not manage SSH credentials, transfers, or remote execution.
 Original provenance files remain byte-for-byte unchanged. `manifest.json`
 records the selected roots, products, dependency order, original-to-export file
 locations, file checksums, external inputs, traced repositories, and metadata
-gaps. Metadata is shared across selected products. Repository-relative metadata
-paths are preserved where an input root is known; other artifacts use digest
-paths. Input roots resolve repository-relative provenance input paths and do not
-copy the corresponding datasets.
+gaps. Metadata is shared across selected products. Selected package sidecars
+stay beside their dataset under `products/`; upstream metadata preserves
+repository-relative paths under `metadata/` where an input root is known. Other
+artifacts use digest paths. Input roots resolve repository-relative provenance
+input paths and do not copy the corresponding datasets.
 
 By default, missing or mismatched metadata produces an `incomplete` export and
 a gap report, rather than preventing collection. `--strict` rejects it and
@@ -63,6 +89,7 @@ is not reconstructed from a filename listing.
 | --- | --- | --- |
 | `--provenance PATH` | Required; repeatable | Selects product provenance records whose datasets are linked into the export. |
 | `--output PATH` | Required | Creates a new export directory. |
+| `--product-base PATH` | Optional | Places selected packages under `products/` relative to source directory PATH; all selected packages must lie beneath it. |
 | `--input-root NAME=PATH` | Optional; repeatable | Resolves repository-relative inputs for recorded repository NAME under PATH. |
 | `--repo-source NAME=SOURCE` | Optional; repeatable | Archives traced repository NAME from SOURCE when repository archiving is enabled. |
 | `--archive-repos` | Optional | Archives explicitly traced Git repositories, deduplicating required revisions per repository. |
@@ -78,6 +105,7 @@ from reprotrail.export import export_products
 report = export_products(
     provenances=["/data/survey-data/results/north/summary/summary.prov.json"],
     output="/scratch/survey-export",
+    product_base="/data/survey-data/results",
     input_roots={"survey-data": "/data/survey-data", "survey-tools": "/code/survey-tools"},
     dry_run=True,
 )
