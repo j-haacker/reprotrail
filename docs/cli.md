@@ -1,7 +1,7 @@
 # Command-line interface
 
-The `reprotrail` command-line interface groups seven executable commands into
-five common provenance workflows. Run `reprotrail --help` to list top-level
+The `reprotrail` command-line interface groups eight executable commands into
+six common provenance workflows. Run `reprotrail --help` to list top-level
 commands, or append `--help` at any group or command level for local guidance.
 
 ## Files and side effects
@@ -11,6 +11,7 @@ commands, or append `--help` at any group or command level for local guidance.
 | `run` | Executes the wrapped command and writes its log, provenance JSON, runtime bundle, and requested product sidecars. |
 | `finalize` | Writes or refreshes checksum, README, license, and RO-Crate sidecars; it can also stamp supported products. |
 | `template readme` | Writes one requested template file and refuses to overwrite it unless `--force` is used. |
+| `export` | Copies recursive reproduction metadata and symlinks selected datasets; `--dry-run` writes nothing. |
 | `reproduce` | Creates a workspace, clones or restores repositories and the Pixi lockfile, writes `REPRODUCTION.md`, and executes only with `--execute`. |
 | `epoch check` | Initializes or accepts the dependency contract only when needed and authorized; `--dry-run` never writes it. |
 | `epoch audit` | Writes the requested audit JSON. |
@@ -29,6 +30,7 @@ reprotrail
 ├── template
 │   └── readme
 ├── reproduce
+├── export
 ├── epoch
 │   ├── check
 │   └── audit
@@ -111,3 +113,8 @@ reprotrail pixi check-git-freshness \
 
 See the {ref}`Pixi Git freshness argument reference <cli-pixi-check-git-freshness>`
 for manifest selection, repeatable packages, JSON output, and exit statuses.
+
+## Export data and recursive metadata
+
+See the {ref}`export argument reference <cli-export>` for symlink exports,
+optional Git archives, metadata gaps, and transfer with `rsync -aL`.

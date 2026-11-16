@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -14,7 +15,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from ._json import write_json
 from ._paths import relative_path, sha256_file
 from .provenance import canonicalize_remote_url
 
@@ -651,8 +651,15 @@ def write_environment_bundle(
         package_names=package_names,
         env_var_whitelist=env_var_whitelist,
     )
-    summary_path = env_dir / "environment.json"
-    write_json(summary_path, summary)
+    # Execution details can change while the lockfile stays identical.
+    # Hash the exact serialized bytes so earlier run references remain valid.
+    summary_text = json.dumps(summary, indent=2, sort_keys=True) + "\n"
+    summary_digest = hashlib.sha256(summary_text.encode("utf-8")).hexdigest()
+    summary_path = env_dir / f"environment-{summary_digest}.json"
+    if not summary_path.exists():
+        summary_path.write_text(summary_text, encoding="utf-8")
+    if sha256_file(summary_path) != summary_digest:
+        raise RuntimeError("Stored provenance environment summary hash does not match original.")
     refs["summary"] = {
         "path": relative_path(summary_path, run_root),
         "sha256": sha256_file(summary_path),

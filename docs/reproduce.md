@@ -53,3 +53,62 @@ remote URL.
 | `--resume` | Optional | Reuses an existing workspace and continues restoration instead of rejecting it. |
 | `--force` | Optional | Removes an existing workspace and recreates it from scratch. This takes precedence over resuming it. |
 | `--json` | Optional | Prints the reproduction report as JSON instead of a human-readable summary. |
+| `--recursive` | Optional | Rebuilds missing ancestors in dependency order; plans without installing or executing unless `--execute` is supplied. |
+| `--bundle PATH` | Optional | Reads a transferred export directory or manifest and implies recursive mode. |
+| `--accept-incomplete` | Optional | Explicitly accepts reported metadata gaps for recursive replay; missing executable prerequisites still block. |
+| `--input-root NAME=PATH` | Optional; repeatable | Resolves repository-relative inputs for recorded repository NAME in original provenance or relocated external inputs. |
+
+## Recursive reproduction
+
+Use `--recursive` to regenerate missing ancestors before the target. Add
+`--bundle` to use a transferred export; specifying it implies recursive mode.
+The target can be any provenance record in the export, including an intermediate
+whose data were excluded. Continuing the fictional survey example from
+[the export guide](export.md), reproduce a cleaned intermediate dataset:
+
+```bash
+reprotrail reproduce \
+  --bundle ./survey-export \
+  --provenance ./survey-export/metadata/survey-data/results/north/cleaned/cleaned.prov.json \
+  --workspace ./replay \
+  --input-root survey-data=/archive/survey-data
+```
+
+Without `--execute`, recursive reproduction writes a dependency plan and
+validation report without installing environments or running producers. Add
+`--execute` after inspecting it. Original input datasets and nonarchived code
+sources/packages must remain accessible, possibly through `--input-map` and
+`--repo-source`. `--input-root` resolves repository-relative inputs in an original
+provenance tree and relocates external input repositories when replaying an export.
+An exact `--input-map` takes precedence over a repository root mapping.
+
+Available ancestors are reused when their recorded provenance and available
+identity evidence match. Reused ancestors prune their own dependencies from the
+execution plan. File SHA-256 is stronger evidence than size/mtime or directory
+stat manifests; the report explicitly identifies the evidence used. Checks
+cannot recover content checksums absent from historical records.
+
+Missing dependencies are produced sequentially, once each, using each step's
+recorded code and environment. All outputs go into the reproduction workspace,
+with separate producer checkouts and auxiliary output locations. Path tokens
+are relocated using the manifest and explicit input mappings. Directory-based
+inputs passed through `--data-root` use workspace overlays of links to the mapped
+inputs. Recognized output flags are `--output`, `--qc`, `--done`,
+`--validation-json`, and `--provenance-json`. Other command-line conventions
+require explicit mappings for absolute paths or paths outside the restored checkout.
+Arbitrary commands must obey these mappings: reprotrail is not an operating
+system sandbox for untrusted producer code.
+
+Regenerated records receive new hashes. Replay preserves archived originals,
+substitutes the new hashes for downstream validation, and records the old-to-new
+mapping in `reproduction.json`. Successful execution does not prove numerical
+or byte equivalence to the historical product. Missing/mismatched metadata
+blocks affected producers unless `--accept-incomplete` is supplied. This flag
+records acceptance; missing inputs, lockfiles, or executable prerequisites still
+block reproduction. `--strict` continues treating warnings as failures.
+
+`--resume` checks replay signatures, observed inputs, output state, and generated
+provenance before reusing completed steps. Changed inputs/options invalidate
+reuse. A required producer failure stops downstream execution and leaves a
+report. `--force` recreates only the specified workspace, refusing to remove an
+enclosing source-data/export directory.

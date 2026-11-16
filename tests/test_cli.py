@@ -38,6 +38,7 @@ CLI_DOCUMENTATION = {
     ("run",): ("docs/runner.md", "cli-run"),
     ("finalize",): ("docs/products.md", "cli-finalize"),
     ("template", "readme"): ("docs/products.md", "cli-template-readme"),
+    ("export",): ("docs/export.md", "cli-export"),
     ("reproduce",): ("docs/reproduce.md", "cli-reproduce"),
     ("epoch", "check"): ("docs/epochs.md", "cli-epoch-check"),
     ("epoch", "audit"): ("docs/epochs.md", "cli-epoch-audit"),
@@ -56,7 +57,7 @@ def _labeled_section(path: Path, label: str) -> str:
 def test_all_commands_and_arguments_have_help_descriptions():
     parsers = list(_walk_parsers(build_parser()))
 
-    assert len(parsers) == 11
+    assert len(parsers) == 12
     assert all(parser.description for parser in parsers)
 
     command_choices = []
@@ -68,9 +69,9 @@ def test_all_commands_and_arguments_have_help_descriptions():
             elif not isinstance(action, argparse._HelpAction):
                 user_arguments.append(action)
 
-    assert len(command_choices) == 10
+    assert len(command_choices) == 11
     assert all(choice.help and choice.help != argparse.SUPPRESS for choice in command_choices)
-    assert len(user_arguments) == 37
+    assert len(user_arguments) == 49
     assert all(action.help and action.help != argparse.SUPPRESS for action in user_arguments)
 
 
@@ -98,7 +99,7 @@ def test_every_leaf_command_and_argument_is_documented():
         assert documented_arguments == expected_arguments
         documented_argument_count += len(documented_arguments)
 
-    assert documented_argument_count == 37
+    assert documented_argument_count == 49
 
 
 @pytest.mark.parametrize(

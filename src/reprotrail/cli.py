@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .epochs import audit_dependency_epochs, check_dependency_contract
+from .export import ExportError, export_products
 from .pixi import PixiGitFreshnessError, check_pixi_git_freshness
 from .products import copy_readme_template, finalize_product_provenance
 from .reproduce import ReproductionError, parse_key_value, reproduce_from_provenance
@@ -59,6 +60,16 @@ def _cmd_reproduce(args: argparse.Namespace) -> None:
             input_maps=parse_key_value(args.input_map),
             resume=args.resume,
             force=args.force,
+            **(
+                {
+                    "recursive": args.recursive,
+                    "bundle": args.bundle,
+                    "accept_incomplete": args.accept_incomplete,
+                    "input_roots": parse_key_value(args.input_root),
+                }
+                if args.recursive or args.bundle
+                else {}
+            ),
         )
     except ReproductionError as err:
         raise SystemExit(str(err)) from err
@@ -68,8 +79,31 @@ def _cmd_reproduce(args: argparse.Namespace) -> None:
         print(f"reproduction status: {report['status']}")
         print(f"workspace: {report['workspace']}")
         print(f"report: {Path(report['workspace']) / 'REPRODUCTION.md'}")
-    if report["status"] != "completed":
+    if report["status"] not in {"completed", "planned"}:
         raise SystemExit(1)
+
+
+def _cmd_export(args: argparse.Namespace) -> None:
+    try:
+        report = export_products(
+            provenances=args.provenance,
+            output=args.output,
+            input_roots=parse_key_value(args.input_root),
+            repo_sources=parse_key_value(args.repo_source),
+            archive_repos=args.archive_repos,
+            strict=args.strict,
+            dry_run=args.dry_run,
+        )
+    except (ExportError, ReproductionError, OSError) as err:
+        raise SystemExit(str(err)) from err
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"export status: {report['status']}")
+        print(
+            f"products: {len(report['products'])}; metadata files: {len(report['files'])}; gaps: {len(report['gaps'])}"
+        )
+        print(f"output: {args.output}" + (" (dry run)" if args.dry_run else ""))
 
 
 def _cmd_epoch_check(args: argparse.Namespace) -> None:
@@ -331,7 +365,48 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the reproduction report as JSON instead of a human-readable summary.",
     )
+    reproduce.add_argument("--recursive", action="store_true", help="Rebuild missing ancestors in dependency order.")
+    reproduce.add_argument(
+        "--bundle", metavar="PATH", help="Read recursive metadata from an export directory or manifest."
+    )
+    reproduce.add_argument("--accept-incomplete", action="store_true", help="Explicitly accept reported metadata gaps.")
+    reproduce.add_argument(
+        "--input-root",
+        action="append",
+        metavar="NAME=PATH",
+        help="Resolve repository-relative inputs under PATH for recorded repository NAME.",
+    )
     reproduce.set_defaults(func=_cmd_reproduce)
+
+    export_description = "Export selected data through symlinks and collect recursive reproduction metadata."
+    export = sub.add_parser("export", help=export_description, description=export_description)
+    export.add_argument(
+        "--provenance",
+        action="append",
+        required=True,
+        metavar="PATH",
+        help="Select a product provenance record; repeat for multiple products.",
+    )
+    export.add_argument("--output", required=True, metavar="PATH", help="Create a new export directory at PATH.")
+    export.add_argument(
+        "--input-root",
+        action="append",
+        metavar="NAME=PATH",
+        help="Resolve repository-relative inputs under PATH for recorded repository NAME.",
+    )
+    export.add_argument(
+        "--repo-source",
+        action="append",
+        metavar="NAME=SOURCE",
+        help="Archive recorded repository NAME from local path or URL SOURCE.",
+    )
+    export.add_argument(
+        "--archive-repos", action="store_true", help="Archive explicitly traced Git revisions in bundles."
+    )
+    export.add_argument("--strict", action="store_true", help="Reject exports with missing or mismatched metadata.")
+    export.add_argument("--dry-run", action="store_true", help="Inspect collection without creating an export.")
+    export.add_argument("--json", action="store_true", help="Print the collection manifest as JSON.")
+    export.set_defaults(func=_cmd_export)
 
     epoch_description = "Manage accepted dependency snapshots for run roots."
     epoch = sub.add_parser("epoch", help=epoch_description, description=epoch_description)

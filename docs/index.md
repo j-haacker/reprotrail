@@ -57,6 +57,7 @@ products
 pixi
 epochs
 reproduce
+export
 configuration
 snakemake
 api

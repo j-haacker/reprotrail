@@ -2,7 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Export selected datasets through symlinks with recursive reproduction metadata,
+  gap reports, and optional archives of explicitly traced Git repositories.
+- Plan and execute recursive reproduction of missing ancestors from original
+  provenance or transferred exports, with input reuse, workspace relocation,
+  recorded provenance substitutions, and validated resume.
+
 ### Fixed
+
+- Preserve environment summaries immutably by content digest even when runs share a lockfile.
 
 - Limit Git LFS pointer detection to a 512-byte prefix instead of reading an
   entire large scientific input before a run.
