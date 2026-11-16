@@ -933,6 +933,9 @@ wheels = [
 name = "reprotrail"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pyyaml" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -974,6 +977,7 @@ requires-dist = [
     { name = "pre-commit-hooks", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'test'" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rocrate", marker = "extra == 'products'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "spdx-tools", marker = "extra == 'products'" },

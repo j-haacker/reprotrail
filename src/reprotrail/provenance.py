@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+import yaml
+
 from ._json import to_jsonable
 from ._paths import sha256_file
 
@@ -282,56 +284,105 @@ def _lfs_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[s
     return metadata
 
 
-def _simple_dvc_outputs(text: str) -> list[dict[str, Any]]:
-    outputs: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if line.startswith("-"):
-            if current:
-                outputs.append(current)
-            current = {}
-            line = line[1:].strip()
-        if current is None or ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip().strip("\"'")
-        if key in {"path", "md5", "hash", "etag", "size", "nfiles"}:
-            current[key] = value
-    if current:
-        outputs.append(current)
-    return outputs
+def _read_dvc_mapping(path: Path) -> dict[str, Any]:
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("DVC metadata must be a mapping")
+    return document
 
 
-def _dvc_metadata(path: Path, repo_root: Path | None, rel: str | None) -> dict[str, Any]:
-    candidates: list[Path] = []
-    if repo_root is not None and rel is not None:
-        candidates.append(repo_root / f"{rel}.dvc")
-        candidates.append(repo_root / "dvc.lock")
-    candidates.append(path.with_name(f"{path.name}.dvc"))
+def _dvc_local_path(value: Any) -> Path:
+    if not isinstance(value, str) or not value or "${" in value:
+        raise ValueError("DVC paths must be nonempty, resolved local strings")
+    if re.match(r"[a-zA-Z][\w+.-]*://", value) or re.match(r"[^/]+@[^:]+:", value):
+        raise ValueError("Remote DVC output paths are not inspected")
+    return Path(value)
 
+
+def _dvc_metadata(path: Path, repo_root: Path | None) -> dict[str, Any]:
     metadata: dict[str, Any] = {"dvc_files": [], "outputs": []}
+    candidates = {path.with_name(f"{path.name}.dvc")}
+    if repo_root is not None:
+        current = path if path.is_dir() else path.parent
+        while current.is_relative_to(repo_root):
+            candidates.add(current / "dvc.lock")
+            try:
+                candidates.update(current.glob("*.dvc"))
+            except OSError as exc:
+                metadata.setdefault("errors", []).append({"path": str(current), "error": str(exc)})
+            if current == repo_root:
+                break
+            current = current.parent
+    fields = {"path", "md5", "hash", "etag", "checksum", "size", "nfiles"}
     seen: set[Path] = set()
-    for candidate in candidates:
+    for candidate in sorted(candidates):
         candidate = candidate.resolve()
-        if candidate in seen or not candidate.exists() or not candidate.is_file():
+        if candidate in seen or not candidate.is_file():
             continue
         seen.add(candidate)
         try:
-            text = candidate.read_text(encoding="utf-8", errors="replace")
-        except OSError as err:
-            metadata.setdefault("errors", []).append({"path": str(candidate), "error": str(err)})
+            document = _read_dvc_mapping(candidate)
+            if candidate.name == "dvc.lock":
+                stages = document.get("stages")
+                if not isinstance(stages, dict):
+                    raise ValueError("DVC lockfile stages must be a mapping")
+                companion = candidate.with_name("dvc.yaml")
+                definitions = None
+                if companion.is_file():
+                    definitions = _read_dvc_mapping(companion).get("stages")
+                    if not isinstance(definitions, dict):
+                        raise ValueError(f"DVC stage definitions in {companion} must be a mapping")
+            else:
+                stages = {"": document}
+                definitions = None
+        except (OSError, UnicodeError, ValueError, yaml.YAMLError) as exc:
+            metadata.setdefault("errors", []).append({"path": str(candidate), "error": str(exc)})
             continue
-        if candidate.name == "dvc.lock" and rel is not None and rel not in text:
-            continue
-        dvc_info = {"path": str(candidate), "outputs": _simple_dvc_outputs(text)}
-        if repo_root is not None:
-            dvc_rel = _repo_relative(candidate, repo_root)
-            if dvc_rel is not None:
-                dvc_info["git_status"] = _git_status_for_path(repo_root, dvc_rel)
-        metadata["dvc_files"].append(dvc_info)
-        metadata["outputs"].extend(dvc_info["outputs"])
+        matched = []
+        for name, stage in stages.items():
+            try:
+                if not isinstance(stage, dict):
+                    raise ValueError("DVC stage must be a mapping")
+                definition = stage
+                if definitions is not None:
+                    definition = definitions.get(name, definitions.get(str(name).split("@", 1)[0]))
+                    if not isinstance(definition, dict):
+                        raise ValueError(f"No working-directory definition for DVC stage {name!r}")
+                    if "foreach" in definition:
+                        definition = definition.get("do")
+                        if not isinstance(definition, dict):
+                            raise ValueError("DVC foreach stage must have a mapping in do")
+                base = candidate.parent / _dvc_local_path(definition.get("wdir", "."))
+                outputs = stage.get("outs", [])
+                if not isinstance(outputs, list):
+                    raise ValueError("DVC outputs must be a list")
+                for output in outputs:
+                    try:
+                        if not isinstance(output, dict):
+                            raise ValueError("DVC output must be a mapping")
+                        owner = (base / _dvc_local_path(output.get("path"))).resolve()
+                        directory = (
+                            owner.is_dir()
+                            or "nfiles" in output
+                            or any(str(output.get(key, "")).endswith(".dir") for key in ("md5", "etag", "checksum"))
+                        )
+                        if path != owner and not (directory and path.is_relative_to(owner)):
+                            continue
+                        entry = {key: str(value) for key, value in output.items() if key in fields}
+                        entry["input_relative_path"] = path.relative_to(owner).as_posix()
+                        matched.append(entry)
+                    except (OSError, ValueError) as exc:
+                        metadata.setdefault("errors", []).append({"path": str(candidate), "error": str(exc)})
+            except (OSError, ValueError) as exc:
+                metadata.setdefault("errors", []).append({"path": str(candidate), "error": str(exc)})
+        if matched:
+            dvc_info = {"path": str(candidate), "outputs": matched}
+            if repo_root is not None:
+                dvc_rel = _repo_relative(candidate, repo_root)
+                if dvc_rel is not None:
+                    dvc_info["git_status"] = _git_status_for_path(repo_root, dvc_rel)
+            metadata["dvc_files"].append(dvc_info)
+            metadata["outputs"].extend(matched)
     return metadata
 
 
@@ -407,11 +458,7 @@ def summarize_directory(path: Path | str, *, max_entries: int = 20_000) -> dict[
         digest.update(f"{rel}\0{size}\0{mtime_ns}\n".encode())
     summary = {
         "manifest_hash": digest.hexdigest(),
-        "manifest_hash_kind": (
-            "bounded-first-entries-paths-size-mtime-ns-v1"
-            if truncated
-            else "paths-size-mtime-ns"
-        ),
+        "manifest_hash_kind": ("bounded-first-entries-paths-size-mtime-ns-v1" if truncated else "paths-size-mtime-ns"),
         "manifest_truncated": truncated,
         "max_entries": max_entries,
         "entries_scanned": entries_scanned,
@@ -492,7 +539,7 @@ def get_input_path_state(
             )
         except OSError as err:
             error = str(err)
-    dvc = _dvc_metadata(target, repo_root, rel)
+    dvc = _dvc_metadata(target, repo_root)
     lfs = _lfs_metadata(target, repo_root, rel)
     metadata.update({"lfs": lfs, "dvc": dvc})
     product_provenance = _product_provenance_metadata(target)
@@ -528,10 +575,7 @@ def get_input_path_states(
 ) -> list[InputPathState]:
     """Inspect multiple input paths, preserving input order."""
 
-    return [
-        get_input_path_state(path, max_file_hash_bytes=max_file_hash_bytes)
-        for path in paths
-    ]
+    return [get_input_path_state(path, max_file_hash_bytes=max_file_hash_bytes) for path in paths]
 
 
 def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[str, Any]:
@@ -549,7 +593,7 @@ def public_input_path_state(state: InputPathState | Mapping[str, Any]) -> dict[s
             key: value for key, value in lfs.items() if key in {"tracked_by_lfs", "is_pointer_file", "oid", "size"}
         }
     dvc = metadata.get("dvc") or {}
-    if dvc.get("dvc_files") or dvc.get("outputs"):
+    if dvc.get("dvc_files") or dvc.get("outputs") or dvc.get("errors"):
         public_metadata["dvc"] = dvc
 
     result: dict[str, Any] = {

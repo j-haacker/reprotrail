@@ -12,6 +12,10 @@
 
 ### Fixed
 
+- Detect inputs within DVC-tracked directories using safe YAML parsing, retain
+  enclosing dataset identity and relative child paths, and report metadata errors
+  without mistaking dependencies or path substrings for tracked outputs.
+
 - Preserve environment summaries immutably by content digest even when runs share a lockfile.
 
 - Limit Git LFS pointer detection to a 512-byte prefix instead of reading an
