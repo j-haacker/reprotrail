@@ -28,5 +28,8 @@ upgrading code that imports these modules directly.
 .. automodule:: reprotrail.reproduce
    :members:
 
+.. automodule:: reprotrail.export
+   :members:
+
 .. automodule:: reprotrail.cli
    :members:

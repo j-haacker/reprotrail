@@ -9,7 +9,7 @@ authors = [
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
-dependencies = []
+dependencies = ["PyYAML>=6.0"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -34,22 +34,20 @@ products = [
     "xarray",
     "zarr",
 ]
-test = [
-    "pytest",
-]
 docs = [
     "furo",
     "myst-parser",
     "sphinx",
 ]
 dev = [
+    "furo",
+    "myst-parser",
+    "netcdf4",
     "pre-commit",
     "pre-commit-hooks",
     "pytest",
     "ruff",
     "sphinx",
-    "furo",
-    "myst-parser",
 ]
 
 [project.scripts]

@@ -312,3 +312,34 @@ def test_audit_dependency_epochs_scans_products(tmp_path):
     assert report["status"] == "report_only"
     assert report["mixed_accepted_epochs"] is True
     assert report["epoch_counts"] == {"1": 1, "2": 1}
+
+
+def test_environment_summaries_are_immutable_for_shared_lockfile(tmp_path, monkeypatch):
+    from reprotrail._paths import sha256_file
+    from reprotrail.pixi import write_environment_bundle
+
+    lock = tmp_path / "pixi.lock"
+    lock.write_text("same dependencies")
+    summary = {"pixi": {"environment": "test"}, "env_vars": {"SLURM_JOB_ID": "first"}}
+    monkeypatch.setattr("reprotrail.pixi.environment_summary", lambda **kwargs: summary)
+    arguments = dict(
+        run_root=tmp_path,
+        project_root=tmp_path,
+        lockfile=lock,
+        pixi_environment="test",
+        dependency_records=[],
+        allow_editable=False,
+        package_names=(),
+        env_var_whitelist=(),
+    )
+    first = write_environment_bundle(**arguments)
+    first_path = tmp_path / first["summary"]["path"]
+    original = first_path.read_bytes()
+    summary["env_vars"]["SLURM_JOB_ID"] = "second"
+    second = write_environment_bundle(**arguments)
+    assert first["lockfile"] == second["lockfile"]
+    assert first["summary"] != second["summary"]
+    assert first_path.read_bytes() == original
+    assert sha256_file(first_path) == first["summary"]["sha256"]
+    assert first["summary"]["sha256"] in first_path.name
+    assert write_environment_bundle(**arguments) == second

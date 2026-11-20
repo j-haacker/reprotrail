@@ -19,6 +19,28 @@ scientific inputs merely to start a run. Git LFS detection reads only the first
 512 bytes. Larger files explicitly record that the content hash was skipped at
 the size limit.
 
+DVC detection safely parses YAML output declarations in ancestor `dvc.lock`
+files and `.dvc` files within the input's Git repository. Direct sibling `.dvc`
+files are also supported outside Git repositories. Output paths are resolved
+relative to their metadata files and static working directories; lockfile stage
+working directories come from the companion `dvc.yaml`. Dependencies, command
+text, and unrelated output names do not establish DVC ownership.
+
+For a child of a tracked directory, `metadata.dvc.outputs` retains the enclosing
+output's path and checksum and adds `input_relative_path` for the child. An exact
+output match uses `.`. The checksum identifies the whole registered dataset,
+not an individually verified file. Detection can succeed when local data are
+missing; it does not establish that a child exists in the registered dataset or
+that a cache or remote can retrieve it. Only matching output declarations are
+included, rather than every output in a lockfile.
+
+Unreadable or malformed metadata, unresolved path templates, and remote output
+URLs are reported in `metadata.dvc.errors`, including public provenance. They do
+not establish DVC tracking on their own. Inspection does not invoke DVC, inspect
+its cache, download data, or add payload hashing beyond the existing file budget.
+PyYAML is a runtime dependency for safe metadata parsing. Historical records and
+exports remain unchanged; improved detection applies to newly captured inputs.
+
 When an input has a conventional sibling product sidecar such as
 `effective-config.prov.json` and its `.sha256` file, input inspection records
 the sidecar name and checksum as `product_provenance` metadata. Reproduction

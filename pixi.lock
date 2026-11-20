@@ -1288,6 +1288,7 @@ packages:
 - pypi: ./
   name: reprotrail
   requires_dist:
+  - pyyaml>=6.0
   - netcdf4 ; extra == 'products'
   - rocrate ; extra == 'products'
   - spdx-tools ; extra == 'products'

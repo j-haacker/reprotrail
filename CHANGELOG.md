@@ -2,7 +2,28 @@
 
 ## Unreleased
 
+### Added
+
+- Add `export --product-base` and the Python `product_base` argument to shorten
+  selected package paths, with a generated README linking datasets and provenance.
+- Export selected datasets through symlinks with recursive reproduction metadata,
+  gap reports, and optional archives of explicitly traced Git repositories.
+- Plan and execute recursive reproduction of missing ancestors from original
+  provenance or transferred exports, with input reuse, workspace relocation,
+  recorded provenance substitutions, and validated resume.
+
+### Changed
+
+- Store selected datasets and their sidecars under `products/`, keeping upstream
+  reproduction artifacts under `metadata/`. Existing exports remain readable.
+
 ### Fixed
+
+- Detect inputs within DVC-tracked directories using safe YAML parsing, retain
+  enclosing dataset identity and relative child paths, and report metadata errors
+  without mistaking dependencies or path substrings for tracked outputs.
+
+- Preserve environment summaries immutably by content digest even when runs share a lockfile.
 
 - Limit Git LFS pointer detection to a 512-byte prefix instead of reading an
   entire large scientific input before a run.

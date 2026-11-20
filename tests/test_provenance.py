@@ -267,3 +267,197 @@ def test_complete_directory_summary_preserves_global_path_hash(tmp_path):
     assert summary["manifest_truncated"] is False
     assert summary["manifest_hash_kind"] == "paths-size-mtime-ns"
     assert summary["manifest_hash"] == "fc0fcedf7a42aae60e88352e57ae1a78f7ccc500341fdee76adfdd7cefe6c760"
+
+
+@pytest.mark.parametrize("registry", ["lock", "sidecar"])
+@pytest.mark.parametrize("present", [True, False])
+def test_dvc_directory_owns_nested_input(tmp_path, registry, present):
+    repo = _repo(tmp_path)
+    dataset = repo / "datasets" / "samples"
+    dataset.parent.mkdir()
+    target = dataset / "nested" / "one.bin"
+    if present:
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"sample")
+    if registry == "lock":
+        (repo / "dvc.lock").write_text(
+            "schema: '2.0'\nstages:\n  prepare:\n    outs:\n"
+            "    - path: datasets/samples\n      md5: abc123.dir\n      nfiles: 2\n"
+            "    - path: unrelated\n      md5: other.dir\n"
+        )
+    else:
+        (dataset.parent / "custom-name.dvc").write_text("outs:\n- path: samples\n  md5: abc123.dir\n  nfiles: 2\n")
+    state = get_input_path_state(target)
+    assert state.backend == "dvc"
+    outputs = public_input_path_state(state)["metadata"]["dvc"]["outputs"]
+    assert len(outputs) == 1
+    assert outputs[0]["md5"] == "abc123.dir"
+    assert outputs[0]["input_relative_path"] == "nested/one.bin"
+
+
+@pytest.mark.parametrize("target", ["samples-old/one.bin", "dependency.bin", "mentioned.bin", "ordinary.bin/child"])
+def test_dvc_ignores_prefixes_dependencies_and_text_mentions(tmp_path, target):
+    repo = _repo(tmp_path)
+    path = repo / target
+    if target != "ordinary.bin/child":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"input")
+    (repo / "dvc.lock").write_text(
+        "schema: '2.0'\nstages:\n  prepare:\n"
+        "    cmd: echo mentioned.bin\n    deps:\n    - path: dependency.bin\n      md5: dep123\n"
+        "    outs:\n    - path: samples\n      md5: abc123.dir\n"
+        "    - path: ordinary.bin\n      md5: file123\n"
+    )
+    state = get_input_path_state(path)
+    assert state.backend != "dvc"
+    assert not state.metadata["dvc"]["outputs"]
+
+
+@pytest.mark.parametrize("registry", ["lock", "sidecar"])
+@pytest.mark.parametrize("is_directory", [True, False])
+def test_dvc_exact_outputs_and_working_directories(tmp_path, registry, is_directory):
+    repo = _repo(tmp_path)
+    target = repo / "data" / "quoted: sample"
+    target.parent.mkdir()
+    if is_directory:
+        target.mkdir()
+    else:
+        target.write_bytes(b"input")
+    checksum = "abc123.dir" if is_directory else "abc123"
+    if registry == "lock":
+        (repo / "dvc.yaml").write_text("stages:\n  build:\n    wdir: data\n")
+        (repo / "dvc.lock").write_text(
+            f"schema: '2.0'\nstages:\n  build:\n    outs:\n    - path: 'quoted: sample'\n      md5: {checksum}\n"
+        )
+    else:
+        (repo / "custom.dvc").write_text(f"wdir: data\nouts:\n- path: 'quoted: sample'\n  md5: {checksum}\n")
+    state = get_input_path_state(target)
+    assert state.backend == "dvc"
+    assert state.metadata["dvc"]["outputs"][0]["input_relative_path"] == "."
+
+
+def test_nested_lock_and_relative_working_directory(tmp_path):
+    repo = _repo(tmp_path)
+    area = repo / "area"
+    area.mkdir()
+    (area / "dvc.yaml").write_text("stages:\n  build:\n    wdir: data\n")
+    (area / "dvc.lock").write_text(
+        "schema: '2.0'\nstages:\n  build:\n    outs:\n    - path: samples\n      md5: abc123.dir\n"
+    )
+    path = area / "data/samples/one.bin"
+    state = get_input_path_state(path)
+    assert state.backend == "dvc"
+    assert state.metadata["dvc"]["outputs"][0]["input_relative_path"] == "one.bin"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "outs: [",
+        "outs: wrong",
+        "- not-a-mapping",
+        "outs:\n- path: '${folder}/one.bin'",
+        "outs:\n- path: ssh://example.invalid/data/one.bin",
+    ],
+)
+def test_dvc_invalid_or_unresolved_metadata_is_reported_publicly(tmp_path, text):
+    repo = _repo(tmp_path)
+    path = repo / "one.bin"
+    path.write_bytes(b"sample")
+    (repo / "one.bin.dvc").write_text(text)
+    state = get_input_path_state(path)
+    assert state.backend == "filesystem"
+    assert state.metadata["dvc"]["errors"]
+    assert public_input_path_state(state)["metadata"]["dvc"]["errors"]
+
+
+def test_dvc_unreadable_registry_is_reported(tmp_path, monkeypatch):
+    repo = _repo(tmp_path)
+    candidate = repo / "one.bin.dvc"
+    candidate.write_text("outs: []")
+    original = Path.read_text
+
+    def read_text(path, *args, **kwargs):
+        if path == candidate:
+            raise PermissionError("registry is unreadable")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    state = get_input_path_state(repo / "one.bin")
+    assert state.backend != "dvc"
+    assert "unreadable" in public_input_path_state(state)["metadata"]["dvc"]["errors"][0]["error"]
+
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "stages: wrong",
+        "stages: {}",
+        "stages:\n  build:\n    wdir: '${location}'",
+        "stages:\n  build:\n    wdir: ssh://example.invalid/data",
+        "stages: [",
+    ],
+)
+def test_dvc_unresolved_stage_definitions_do_not_guess_working_directory(tmp_path, definition):
+    repo = _repo(tmp_path)
+    (repo / "dvc.yaml").write_text(definition)
+    (repo / "dvc.lock").write_text("stages:\n  build:\n    outs:\n    - path: data.txt\n      md5: abc123\n")
+    state = get_input_path_state(repo / "data.txt")
+    assert state.backend != "dvc"
+    assert public_input_path_state(state)["metadata"]["dvc"]["errors"]
+
+
+def test_dvc_standalone_sidecar_preserves_tracking_without_git(tmp_path):
+    (tmp_path / "sample.bin.dvc").write_text("outs:\n- path: sample.bin\n  md5: abc123\n")
+    state = get_input_path_state(tmp_path / "sample.bin")
+    assert state.backend == "dvc"
+    assert state.metadata["dvc"]["outputs"] == [{"path": "sample.bin", "md5": "abc123", "input_relative_path": "."}]
+
+
+def test_dvc_sidecar_dependency_does_not_own_input(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "data.txt.dvc").write_text(
+        "deps:\n- path: data.txt\n  md5: dependency\nouts:\n- path: other.bin\n  md5: output\n"
+    )
+    assert get_input_path_state(repo / "data.txt").backend == "git"
+
+
+def test_dvc_directory_detection_does_not_read_cache_or_hash_payload(tmp_path, monkeypatch):
+    repo = _repo(tmp_path)
+    target = repo / "samples" / "one.bin"
+    target.parent.mkdir()
+    target.write_bytes(b"sample")
+    (repo / "samples.dvc").write_text("outs:\n- path: samples\n  md5: abc123.dir\n")
+
+    def fail_hash(*args, **kwargs):
+        raise AssertionError("No additional payload hashing is allowed")
+
+    monkeypatch.setattr("reprotrail.provenance.sha256_file", fail_hash)
+    state = get_input_path_state(target, max_file_hash_bytes=0)
+    assert state.backend == "dvc"
+    assert state.metadata["file"]["hash_skipped"]["reason"] == "size-limit"
+    assert not (repo / ".dvc").exists()
+
+
+def test_dvc_registry_deduplication_and_existing_directory_evidence(tmp_path):
+    repo = _repo(tmp_path)
+    target = repo / "samples" / "one.bin"
+    target.parent.mkdir()
+    target.write_bytes(b"sample")
+    (repo / "samples.dvc").write_text("outs:\n- path: samples\n  etag: dataset-identity\n")
+    (repo / "one.bin.dvc").write_text("outs: []")
+    state = get_input_path_state(target.parent)
+    assert state.backend == "dvc"
+    assert len(state.metadata["dvc"]["dvc_files"]) == 1
+    child_state = get_input_path_state(target)
+    assert child_state.backend == "dvc"
+    assert child_state.metadata["dvc"]["outputs"][0]["input_relative_path"] == "one.bin"
+
+
+def test_dvc_expanded_stage_uses_static_foreach_working_directory(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "dvc.yaml").write_text("stages:\n  build:\n    foreach: [north]\n    do:\n      wdir: data\n")
+    (repo / "dvc.lock").write_text("stages:\n  build@north:\n    outs:\n    - path: samples\n      md5: abc123.dir\n")
+    state = get_input_path_state(repo / "data/samples/one.bin")
+    assert state.backend == "dvc"
+    assert state.metadata["dvc"]["outputs"][0]["input_relative_path"] == "one.bin"
