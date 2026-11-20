@@ -34,22 +34,20 @@ products = [
     "xarray",
     "zarr",
 ]
-test = [
-    "pytest",
-]
 docs = [
     "furo",
     "myst-parser",
     "sphinx",
 ]
 dev = [
+    "furo",
+    "myst-parser",
+    "netcdf4",
     "pre-commit",
     "pre-commit-hooks",
     "pytest",
     "ruff",
     "sphinx",
-    "furo",
-    "myst-parser",
 ]
 
 [project.scripts]
